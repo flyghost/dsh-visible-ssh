@@ -57,9 +57,11 @@ node test\live-route.mjs                       # 真 cordis ＋ 真 webServer �
 node test\own-host-check.mjs                   # 自起一台 web 宿主：token 栅栏 ＋ 三条路由 ＋ list 真过 SSH（8 项；浏览器那一半要人先起浏览器）。凭据同上，没给就打印 {skipped: …} 并 exit 0
 packages\engine-win32-x64\visible-ssh.exe doctor   # 只连不看屏，打印目标机事实
 node plugin\scripts\host-config.mjs path           # 这次引擎会读哪份 host.toml（只打印路径与候选，从不打印内容）
+node plugin\scripts\install-local.mjs              # 装进**本机**桌面版 profile（默认 link；还有 --file／--tarball／--check／--dry-run）
 ```
 
 - **套件读的是产物 `plugin/lib/`**，所以 `run.mjs` 会先确认它不比 `plugin/src/`（含 `tsconfig.json`、`scripts/`）旧，旧了或缺失就自己跑 `plugin/scripts/build.mjs`；那一步要仓根的 typescript（`npm install` 装的），缺了会给一句明确的失败。改源码时想少跑一遍就 `npm run watch --workspace dsh-visible-ssh`。
+- **`link:` 装过之后别再让 pnpm 换掉那条依赖**：桌面 profile 里的 `node_modules/dsh-visible-ssh` 是指向本仓 `plugin/` 的 **junction**，pnpm 把这条 `link:` 换成别的形式（`file:`／tarball／版本号）时会在 Windows 上**顺着 junction 删光目标里的内容**（2026-10-05 实测把 `plugin/` 删空；`git checkout -- plugin` 能救回**已跟踪**的文件，未跟踪的新文件就没了）。换形式走 `node plugin\scripts\install-local.mjs`（它装之前只摘链接、不递归），细节见 `plugin/README.md` §2.5。
 - **验证降档**（默认工作方式）：只跑目标层测试 ＋ 退出码，不做全仓普查。
 - **加检查项只改一处**：新套件放进 `test/` 后**必须登记进 `test/run.mjs` 的台账**（`HERMETIC` 或 `OPT_IN`），否则门禁按名字报 `FAILED: the suite ledger is out of date` —— 漏跑本来是静默的，那条守卫就是为这个存在的。
 - `live-*`／`own-host-check`／`boot-graph` 默认不跑，各自的前提与"缺前提时怎么办"列在 `test/README.md` 的表里。

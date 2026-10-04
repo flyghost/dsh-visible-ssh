@@ -170,6 +170,10 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 （`package.json` ＋ `pnpm-lock.yaml`）。整机 `~/.dsh` 里剩下的命中全是历史 session 缓存与
 `.plugin-manager/logs/*`，不是配置。
 
+> **2026-10-05 更新**：桌面 web profile 里**又有**这个插件了 —— `dsh-visible-ssh:
+> link:E:/GitHub/me/ssh/plugin`（用本仓的 `plugin/scripts/install-local.mjs` 装的，见 §2.5）。
+> 上面那段"已经摘除"只描述当时的状态；桌面里要生效仍然得**完全退出再打开**。
+
 另注：**仓内的隔离 seed 不受影响** —— `test/env/home.seed/profiles/web/package.json` 写的是
 `link:__REPO__/plugin`，由 `test/tools/setup-env.mjs:131` 在生成时替换成仓路径，所以提交进版本管理的
 种子文件里**没有**开发机绝对路径。
@@ -210,6 +214,45 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 | 其余 `src/**/*.ts`、`package.json` | 先 `npm run build`（宿主加载的是 `lib/`），再**必须重启宿主**（宿主半的模块在组合期定型，没有 HMR）。Desktop 重启应用；CLI 重启 `dsh --profile web`。改 `src/client/index.js` 也一样要 build，只是 build 之后有 HMR |
 
 改引擎二进制**不用**重启：插件每次调用都新起进程。
+
+### 2.5 一条命令装本机（`plugin/scripts/install-local.mjs`）
+
+上面那几条手工命令的打包版：它自己找到 `dsh`、从 `dsh.cmd` 里问出它用的 `DSH_HOME`、构建产物、
+缺 exe 就取一组、按你选的形式装进去，最后**按运行时同一条路**复验一遍。
+
+```powershell
+node plugin/scripts/install-local.mjs              # link 装进 web（默认；开发用，build 完就热更）
+node plugin/scripts/install-local.mjs --file       # 拷进 profile（不打包、不碰网络）
+node plugin/scripts/install-local.mjs --tarball    # 打成两个 tgz 再装（第三方拿到本仓后走的就是这条）
+node plugin/scripts/install-local.mjs --check      # 只看装没装、能不能用（不改任何东西）
+node plugin/scripts/install-local.mjs --dry-run    # 只打印要跑的命令
+```
+
+复验查的是：清单里的依赖 ＋ `dsh.profile.bundles` 里那一项 ＋ 装在哪（`realpath`）＋ 客户端产物
+字节数 ＋ 按 `realpath` 解析平台包 ＋ 跑一次 `visible-ssh.exe version` 要求 `"ok":true`。
+（**必须从 `realpath` 建 `createRequire`**：`link:` 装出来是 junction，从它的字面路径解析平台包会
+解不到仓里那份 —— 宿主加载链接里的模块时 Node 解的是真实路径，本脚本第一版就错在这里。）
+
+⚠️ **`link:` 装过之后，别让 pnpm 去"换掉"那条依赖**（2026-10-05 实测；本脚本的第一版就是被它吃掉的）。
+profile 里的 `node_modules/dsh-visible-ssh` 是**指向本仓 `plugin/` 的 junction**，而 pnpm 在把这条
+`link:` 依赖换成别的形式（`file:`／tarball／版本号）时，会在 Windows 上**顺着 junction 删光链接目标
+里的一切**。目标目录本身留着 —— 所以仓库根的 `.git` 活着、`git checkout -- plugin` 能把**已跟踪**
+的文件全找回来，但**未跟踪的新文件就没了**。
+
+实测记录（可抛弃现场 `test/env/tmp/junc/`，pnpm v11.8.0，与本机桌面版同一个版本）：
+
+| 现场 | 结果 |
+|---|---|
+| `add link:<dir>` | 装出一个 **Junction**（`LinkType Junction`，Target = 那个目录） |
+| 紧接着 `add <两个 tgz>`（换掉 link 依赖） | **目标里的内容被整个删光**（哨兵文件没了，目录本身还在） |
+| 先手工摘掉 junction（只 `rmdir` reparse point），再 `add <两个 tgz>` | 目标**完好** |
+| `add file:<dir>` 之后再 `add <两个 tgz>` | 目标**完好**（`file:` 装出来是实体拷贝，不是链接） |
+| `remove dsh-visible-ssh` | 目标**完好**，只是清单与 `bundles` 里的条目没了，**junction 留成孤儿** |
+
+所以脚本在装之前，会先对 `node_modules` 下 `dsh-visible-ssh` 与
+`dsh-visible-ssh-engine-win32-x64` 两个名字各跑一次"只摘链接"（`lstatSync` → `isSymbolicLink()` →
+`rmdirSync`），装完再把 `plugin/src/index.ts` 是否还在当绊线（不在就提示先 `git checkout -- plugin`）。
+`link:` 仍然是日常开发的正路，要换形式时先跑这个脚本 —— 别直接手敲 `dsh plugin add`。
 
 ---
 
