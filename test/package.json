@@ -2,6 +2,7 @@
   "name": "visible-ssh-test",
   "private": true,
   "version": "0.0.0",
+  "license": "Apache-2.0",
   "description": "The test half of the workspace: the peer packages the suites and tools resolve (cordis, dsh-tools, schemastery) plus playwright for the shared browser. Installed by the npm workspaces at the repository root, so the tree is hoisted to <repo>/node_modules (playwright stays under test/ because npm does not hoist it) and nothing points at the operator's home — plugin/node_modules, a symlink into ~/.dsh/profiles/node_modules, is gone. Pinned on purpose: bump here when the DSH runtime the plugin is developed against moves.",
   "scripts": {
     "test": "node run.mjs",

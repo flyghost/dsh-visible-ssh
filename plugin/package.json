@@ -1,6 +1,7 @@
 {
   "name": "dsh-visible-ssh",
   "version": "0.0.1",
+  "license": "Apache-2.0",
   "private": true,
   "description": "Drive a remote host through a shared tmux pane, so the human watching that pane sees every command the model runs and can take it over at any time.",
   "type": "module",

@@ -137,7 +137,7 @@ plugin/
 
 - DSH **0.1.5-rc.x 或 0.2.0-rc.x**（实测 0.1.5-rc.2 / Desktop 2.0.13 与 0.2.0-rc.2 / Desktop 2.0.17）。本包 peer 要求 `@deepseek-ai/cordis ^4.0.2` 与 `@deepseek-ai/dsh-tools ^0.1.5-rc.1 || ^0.2.0-rc.2`，二者由宿主 bundle 提供 —— **运行时不需要任何 `dependencies`**。开发时要装的是**仓根工作区**（`npm install`，一次；换来 `typescript` 等构建工具），见 [§7](#7-测试)。
   这两条范围**不是装饰**：profile 启动时 `dsh-app-boot` 会拿 peer 里每个 `@deepseek-ai/dsh*` 项去比对当前运行时版本，**不满足就把整个 bundle 静默丢掉**（宿主只打印 `skipping profile bundle "dsh-visible-ssh": … is incompatible with dsh <version>`），插件本身仍安好。所以运行时换 tuple（0.1.5 → 0.2.0）时必须同步放宽这里的范围，否则表现为「插件没加载」。
-- **产物**：平台包 `dsh-visible-ssh-engine-win32-x64`（住在 `packages/engine-win32-x64/`，由本包的 `optionalDependencies` 拉进来，`os`/`cpu` 只匹配 win32-x64）：`visible-ssh.exe` ＋ `visible-ssh-askpass.exe` ＋ `visible-ssh-launch.exe`（单文件自包含，无运行时依赖；由引擎项目产出后整组拷入，见 `docs/engine-artifacts.md`）。**三个 exe 不进 git 跟踪**，所以新克隆的仓库要么把整组拷进来，要么从 `npm run pack:engine` 出的 tarball 装。
+- **产物**：平台包 `dsh-visible-ssh-engine-win32-x64`（住在 `packages/engine-win32-x64/`，由本包的 `optionalDependencies` 拉进来，`os`/`cpu` 只匹配 win32-x64）：`visible-ssh.exe` ＋ `visible-ssh-askpass.exe` ＋ `visible-ssh-launch.exe`（单文件自包含，无运行时依赖；由引擎项目产出后整组拷入，见 `docs/engine-artifacts.md`）。**三个 exe 不进 git 跟踪**，所以新克隆的仓库要先取一组：常规办法是 `node plugin/scripts/engine-fetch.mjs --tag v0.0.1 --install --lock`（从上游 Release 取，按锁里的三把锚核对），也可以把整组拷进来，或从 `npm run pack:engine` 出的 tarball 装。
 - **构建**：宿主与测试加载的都是 `lib/`（`package.json` 的 `exports` 指过去），所以**装之前或改完源码之后要先构建**：仓根 `npm install`（工作区的 `prepare` 会顺带构建一次）或 `npm run build`。`plugin/lib/` 是 gitignore 的产物，不会随仓库一起拿到。
 - Node **>= 20**（`engines`）。
 - 引擎的**参照实现**与它的测试（Python + paramiko）**不随本仓提供**，随引擎源码在引擎项目里——插件这条路只跑编译产物，不需要 Python。
