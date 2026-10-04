@@ -1,0 +1,19 @@
+{
+  "name": "dsh-visible-ssh-engine-win32-x64",
+  "version": "0.0.1",
+  "private": false,
+  "description": "The compiled visible-ssh engine for win32-x64: visible-ssh.exe plus the two helpers it looks for in its own directory. The executables are built by the engine project (omnibus, product vssh) and deliberately not kept in git; only this manifest, README.md and engine.lock are versioned. The dsh-visible-ssh plugin resolves this package by name and checks the payload against engine.lock before running it.",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "visible-ssh.exe",
+    "visible-ssh-askpass.exe",
+    "visible-ssh-launch.exe",
+    "engine.lock",
+    "README.md"
+  ]
+}

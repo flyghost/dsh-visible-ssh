@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "引擎产物的身份锁。三个 exe 被 .gitignore 忽略（产物不提交），所以",
+    "'这一组 exe 到底是什么' 唯一受版本管理的记录就在这里：files 是本目录里那份字节的",
+    "sha256，release 说它们来自哪个 Release 附件（含附件自己的 sha256），upstream 与",
+    "reported_version 是产物与那次发布的自述 —— 换版本时三处一起变。upstream.built 记的是",
+    "那次发布对外的时间（上游的包只自报 version/commit，没有构建时间）。刷新产物跑",
+    "`node plugin/scripts/engine-fetch.mjs --install --lock`，再跑 `node test/run.mjs`",
+    "让 artifact-check 重新校验身份。流程见 docs/engine-artifacts.md。"
+  ],
+  "engine": "visible-ssh",
+  "upstream": {
+    "project": "omnibus",
+    "product": "vssh",
+    "commit": "4d729fe",
+    "built": "2026-10-03T06:24:53Z (release published; no build time is recorded)"
+  },
+  "release": {
+    "repo": "flyghost/omnibus",
+    "tag": "v0.0.1",
+    "asset": "omnibus-vssh-v0.0.1-win64-lite.zip",
+    "flavor": "lite",
+    "bytes": 89396,
+    "sha256": "09323559d41735eb1f365f704a5a99a32cfd1a2d2602e9c9cb6077c35610746f",
+    "published": "2026-10-03T06:24:53Z",
+    "renames": {
+      "visible-ssh-c.exe": "visible-ssh.exe"
+    }
+  },
+  "reported_version": "v0.0.1",
+  "files": {
+    "visible-ssh.exe": {
+      "bytes": 128512,
+      "sha256": "e26ad23a89aae028c614f0be08479def1cdd860d2e2fa3f110c7d981fb9b898a"
+    },
+    "visible-ssh-askpass.exe": {
+      "bytes": 11264,
+      "sha256": "07c9edc6dee3abe120d11b835d329a875ac7c8071b25f7613d5551a32fad4903"
+    },
+    "visible-ssh-launch.exe": {
+      "bytes": 28672,
+      "sha256": "aeb1bad09503883e11eb7c7a917c44aa5d8711dec461197bf4ff6b84fa08e219"
+    }
+  }
+}

@@ -1,0 +1,91 @@
+# 凭据 —— 绝不提交
+# 注意：含斜杠的模式是「锚定到本文件所在目录」的，所以必须写全路径。
+# 原来的 `config/host.toml` 匹配不到 `scripts/config/host.toml`（仓库重构后
+# 移到了 scripts/ 下），等于凭据文件一直处于可被 git add 的状态。
+scripts/config/host.toml
+scripts/config/known_hosts
+.env
+*.pem
+*.key
+
+# 第三方依赖 —— 本仓不再存放引擎源码，这份目录只属于引擎项目
+# （那边可由 tools/fetch_deps.py 重建，约 13.5 MB）。留着这条是给还带着
+# 旧工作树的人兜底。
+.pylibs/
+
+# 引擎产物：由引擎项目构建后**整组**拷进平台包 `packages/engine-win32-x64/`
+# （三个 exe 必须同目录），见 docs/engine-artifacts.md。产物不提交 ——
+# 那个包的 `package.json`／`README.md`／`engine.lock` 是受版本管理的清单与身份锁，
+# 只有 exe 被下面这条挡住。规则刻意写在**根**而不是包目录里：`npm pack` 会拿包目录里
+# 的 `.gitignore`/`.npmignore` 当忽略清单，放一份进去就多一个可能把 `files` 白名单里
+# 的 exe 一起漏掉的地方（`engine-pack.mjs` 打完包会检查 tarball 内容，见那个脚本）。
+packages/engine-win32-x64/visible-ssh*.exe
+# 引擎自己（重定向 stdout/stderr 时）会在 exe **旁边**留下 `visible-ssh-c-<pid>.{out,err}`：
+# 0 字节的临时残渣，实测出现在平台包目录里。别让它进提交区。
+packages/engine-win32-x64/visible-ssh-c-*
+# 旧名兜底：产物在 2026-10-02 从 `bin/` 搬到上面的平台包（之前还叫过 `engine/`）。
+# 这两条留着，是万一有人把整组产物放回旧目录（错的做法，见 docs/engine-artifacts.md）
+# 也别让它进提交区。
+#
+# ⚠️ **必须带前导斜杠**（锚定到仓库根）。不带斜杠的 `engine/` 会匹配**任意层级**下叫
+# engine 的目录 —— 实测它把 `plugin/src/engine/` 整个吞掉了：S3 新建的 port/envelope/
+# locate/exec/fake.ts 与 S4 的 verify.ts 六个文件都没进提交，`git add -A` 一声不响，
+# 只有 `git status --ignored` 看得见（commit H 因此少提交了六个源文件）。
+# 改名/搬家之后先跑一次 `git status --ignored --short` 核对，别只看普通 status。
+/bin/
+/engine/
+
+# 构建产物：`plugin/src/` 由 `npm run build`（tsc 编宿主侧 ＋ 逐字拷客户端半）编译到
+# `plugin/lib/`，桌面 profile 与测试都按 package.json 的 `exports` 读这里。产物不提交：
+# 新克隆跑一次 `npm install`（`prepare` 会构建）或 `npm run build` 即可，见 plugin/README.md。
+plugin/lib/
+
+# Python 运行时产物
+__pycache__/
+*.py[cod]
+
+# 本地备份（重构前的单文件版本，仅供参考）
+.backup/
+
+# 临时诊断脚本与运行产物 —— 一次性用，结论沉淀进文档后即可删
+scratch/
+
+# 本地日志
+*.log
+
+# pnpm 的 store —— 在本仓库根目录跑 `dsh plugin ... add` 时会被就地创建
+# （实测：装了 dsh-visible-ssh 之后仓库根多出一个 .pnpm-store/）。
+.pnpm-store/
+
+# 位置无关兜底 —— 上面每一条都按**路径/目录名字面量**锚定（含斜杠的锚定到本文件
+# 所在目录，`engine/`、`scratch/` 这类目录名规则也一样）。目录一旦改名或搬家，它们
+# 会**静默失效**，而失效的后果正是上面 :1-4 记的那次事故：凭据重新变成可被 git add。
+# 下面这组只看名字、不依赖路径。改名/搬家之后**先跑 `git status` 确认凭据仍被忽略**，
+# 再谈别的。
+**/host.toml
+!**/host.toml.example
+**/known_hosts
+**/.credentials.yaml
+**/.credentials.yml
+**/connections.json
+**/id_rsa
+**/id_ed25519
+# 操作者机器的真值档案（站点标识对照表）—— 形状照 host.toml 的老规矩：
+# 模板可以入库，真值不进。它是**给人看的对照表**，代码与测试都不读它。
+**/site-profile.md
+!**/site-profile.md.example
+# `node_modules/`（带斜杠）只匹配目录，匹配不到 `plugin/node_modules` 这种**符号
+# 链接**，所以这里不带斜杠。
+node_modules
+# 测试自己创建的临时目录（老位置 plugin/tests/.tmp-*，现在统一在 test/env/tmp/）
+**/.tmp-*/
+
+# 测试设施的**生成物** —— 都能由 `node test/tools/setup-env.mjs` 重建，所以不进提交区。
+# 受版本管理的是清单与模板：`test/package.json`、`test/env/host/package.json`、
+# `test/env/home.seed/`（模板留在 env/ 里却**不**被下面的规则命中，是刻意的）。
+# `test/*.mjs` 与 `test/tools/` 是源码，当然要提交；见 test/README.md。
+test/env/home/
+test/env/tmp/
+test/env/evidence/
+# 浏览器 profile 与它的启动日志：几百 MB，且有一个是操作者副屏在用的活 profile
+test/env/browser/

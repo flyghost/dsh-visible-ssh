@@ -1,0 +1,27 @@
+{
+  "name": "visible-ssh-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "开发期工作区根（npm workspaces）。三个成员：plugin/ 是插件本体（源码在 plugin/src/、构建产物在 plugin/lib/、带自己的 TypeScript 工具链），test/ 是测试设施（套件运行时要解析的 peer 包与 playwright），packages/engine-win32-x64/ 是引擎产物平台包（包里的 exe 不进 git，身份记在同目录的 engine.lock 里）。依赖被提升到这一层的 node_modules/，所以三个成员都不需要自己的 node_modules —— plugin/ 那份曾经是指向 ~/.dsh/profiles/node_modules 的符号链接。真实运行时依赖由宿主提供，这里装的只是开发期需要的东西（TypeScript 编译器、ESLint 与它的插件）。",
+  "workspaces": [
+    "plugin",
+    "test",
+    "packages/engine-win32-x64"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace dsh-visible-ssh",
+    "typecheck": "npm run typecheck --workspace dsh-visible-ssh",
+    "lint": "eslint .",
+    "test": "npm test --workspace visible-ssh-test",
+    "ci": "npm run build && npm run typecheck && npm run lint && node test/run.mjs",
+    "pack:engine": "node plugin/scripts/engine-pack.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "typescript-eslint": "^8.71.0"
+  }
+}

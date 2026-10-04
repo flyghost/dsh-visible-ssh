@@ -1,0 +1,44 @@
+# SSH 主机连接配置 —— 模板（可安全入库）
+#
+# 这是**引擎**读的那份配置（插件另外读其中一项：`[host] session`）。引擎自己不找"用户目录"，它只认两条路：
+#   * `--config <绝对路径>` —— 插件就是这么把下面选出的路径交给它的
+#     （相对路径会按当前目录解析，所以插件只传绝对路径）；
+#   * 环境变量 `SSH_CONFIG=<路径>` —— 没有被显式配置时用它。
+# 选哪份由插件侧的 `chooseHostConfig()` 决定，优先级：
+#   插件配置 configPath  >  SSH_CONFIG  >  用户目录那份  >  仓内 scripts/config/host.toml
+#   用户目录（装好之后的家）：Windows 的 %APPDATA%\visible-ssh\host.toml，
+#   其它平台 $XDG_CONFIG_HOME/visible-ssh/host.toml（没有 XDG_CONFIG_HOME 时 ~/.config/…）。
+#   两份候选都是"存在才用"：哪儿都没有，引擎就一个 `--config` 也收不到。
+#
+# 开发时：把这份复制成 scripts/config/host.toml（已 gitignore）
+#   copy scripts\config\host.toml.example scripts\config\host.toml
+# 安装之后：`node plugin/scripts/host-config.mjs install` 把它种到用户目录
+#   （`… path` 与 `… show` 只谈路径，从不打印任何内容）。
+#
+# 字段级覆盖：SSH_HOST / SSH_PORT / SSH_USER / SSH_PASSWORD 环境变量压过文件内容。
+#
+# 这里只放占位符：目标机的真实地址、用户名与显示名只应出现在真正那份配置里
+# （两份都在 gitignore 里）。代码、测试、文档一律引用配置，
+# 不复述真实值——复述出来的那一份迟早会和这里漂移。
+
+[host]
+host = "192.0.2.10"          # 占位符（RFC 5737 文档地址），改成目标机地址
+port = 22
+user = "your-user"           # 目标机登录用户名
+password = "CHANGE_ME"
+
+# 可选：窗口标题里显示的机器名；不设则用 "user@host"。
+# 这是唯一需要"好读的机器名"的地方，所以它属于配置，不属于代码。
+# label = "家里的小主机"
+
+# 可选：默认寻址哪个 tmux 会话（"会话窗口"）—— 工具与面板都用它，默认 default。
+# 引擎不认这个键（未知键照旧被忽略），只有插件读它；不写就用插件配置里的
+# defaultSession（默认也是 default）。
+# session = "default"
+
+# 可选：让密码改从环境变量读取（推荐，可借此把密码从文件里挪走）
+# 设置后优先于上面的 password；引用的变量必须已存在，否则视为未配置。
+# password_env = "SSH_PASSWORD"
+
+# 可选：SSH 连接超时（秒），默认 15
+# connect_timeout = 15

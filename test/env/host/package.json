@@ -1,0 +1,9 @@
+{
+  "name": "visible-ssh-test-host",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A real DSH web host, installed INSIDE this repo, for the browser-level check (test/own-host-check.mjs). Pinned to the same version the desktop host ships, so the check answers for the runtime that is actually in use. Built by test/tools/setup-env.mjs; it replaces a former scratch/env/dsh-latest, which had drifted to 0.1.7-rc.1.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2"
+  }
+}

@@ -1,0 +1,27 @@
+# dsh-visible-ssh bundle patch.
+#
+# Installing this package through the official CLI —
+#
+#   dsh plugin --profile <name> add <path-or-tarball>
+#
+# — reconciles `dsh.profile.bundles` against installed packages and, seeing the
+# `dsh.bundle.patch` declaration in package.json, appends this package to the
+# profile's bundle stack. The profile boot then merges THIS file, exactly like a
+# hand-written mount line. No profile file needs editing.
+#
+# Everything is optional: with no config the plugin resolves the compiled engine
+# by package name (dsh-visible-ssh-engine-win32-x64, declared in
+# optionalDependencies) and verifies it against that package's engine.lock.
+#
+# Overrides, if the layout differs:
+#
+#   - insert:
+#       - id: visible-ssh
+#         name: 'dsh-visible-ssh'
+#         config:
+#           repoRoot: 'D:\\path\\to\\repo'
+#           exeEntry: 'D:\\path\\to\\visible-ssh.exe'   # an explicit drop-in beats package resolution
+#           spoolDir: 'D:\\tmp\\visible-ssh'
+- insert:
+    - id: visible-ssh
+      name: 'dsh-visible-ssh'

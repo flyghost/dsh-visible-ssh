@@ -1,0 +1,31 @@
+{
+  // 构建配置：源码在 src/，产物在 lib/（宿主与 profile 都按 package.json 的 exports
+  // 读 lib/，所以没有构建就没有插件）。`include` 同时收 .js 与 .ts：S2 是**逐文件**
+  // 从 JS 迁到 TS 的，中间任何一刻两条腿都必须能一起编译。
+  //
+  // `src/client/` 是**故意**排除的：客户端半的契约是「这份文件原样交给浏览器的模块
+  // 加载器」，而 tsc 是从 AST 重新打印的 —— 它不但会重排版，还会给没有 import/export
+  // 的文件末尾补一个 `export {}`，把这份脚本变成 ES 模块。所以它由
+  // plugin/scripts/copy-client.mjs 逐字拷进 lib/client/，这里只管宿主侧。
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rootDir": "src",
+    "outDir": "lib",
+    "declaration": true,
+    "sourceMap": false,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["src/client"]
+}

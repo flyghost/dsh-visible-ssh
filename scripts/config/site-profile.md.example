@@ -1,0 +1,36 @@
+# 站点档案（模板 —— 这份可以入库）
+
+这份表回答一个问题：**公开库里那些占位符，当年对应的是哪台机器。**
+仓库里的文档、夹具、账本一律只写占位符；真值抄在本目录的 `site-profile.md` 里
+（`.gitignore` 已挡住，形状照 `host.toml` / `host.toml.example` 的老规矩）。
+
+> **代码与测试都不读这份文件。** 一旦有测试去读本机文件，密闭层的静态扫描会直接判红
+> （`test/run.mjs` 的 HERMETIC 层扫 `DSH_HOME` / `homedir` / `USERPROFILE` / `APPDATA` /
+> `LOCALAPPDATA` / `~/.dsh`），那也正是"测试与本机解耦"这条硬性约束的边界。
+> 这份表只为人服务：日后想知道"当年那台机器是谁"，翻它。
+
+| 仓库里的占位符 | 它是什么 | 这台机器上的真值 |
+|---|---|---|
+| `192.0.2.10` | 局域网那台（profile 显示名 `LAN 机`） | `<lan-host>` |
+| `192.0.2.11` | 同网段另一台（当时不可达） | `<lan-host-2>` |
+| `192-0-2-11` | 上面那台的 profile id（点换成横线） | `<lan-host-2-id>` |
+| `192.0.2.12` | 操作者 `~/.ssh/config` 里另一条别名机 | `<lan-peer>` |
+| `me`（`192.0.2.12` 那台的登录用户） | 那条别名的用户 | `<lan-peer-user>` |
+| `198.51.100.7` | 走密钥的云主机（别名 `key-host-01`） | `<key-host-ip>` |
+| `example-host` | 那台云主机的 shell 提示符主机名 | `<key-host-name>` |
+| `lan-box` / `me` | 局域网那台的别名与登录用户（`lan-box.local`／`pi.local`） | `<lan-alias>` / `<lan-user>` |
+| `key-host-01` / `key-host-01.pem` | 带 `IdentityFile` 的别名机 | `<key-alias>` / `<key-file>` |
+| `C:\Users\me` | 操作者的 Windows 用户目录 | `<windows-user>` |
+
+占位地址都选自 RFC 5737 的文档段（`192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`）：
+它们永远不会出现在真实网络里，所以看一眼就知道是例子 —— 不要用 `10.0.0.0/8` 或
+`192.168.0.0/16` 里的地址当占位符，那些会与真实内网撞车。
+
+新建一份真值版：
+
+```powershell
+copy scripts\config\site-profile.md.example scripts\config\site-profile.md
+```
+
+然后把右列填上。**填完先 `git check-ignore -v scripts/config/site-profile.md` 确认它被挡住，
+再 `git add -A`。**
