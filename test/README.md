@@ -111,7 +111,8 @@ node test/tools/driver.mjs              # agent：控制口 http://127.0.0.1:774
 
 ## 与本机完全解耦（可强制）
 
-"密闭层不碰本机"不是自觉，而是 `run.mjs` 在跑任何东西**之前**执行的两道动作：
+"密闭层不碰本机"不是自觉，而是 `run.mjs` 在跑任何东西**之前**执行的三道动作
+（前两道管"测试层不认识这台机器"，第三道是反过来的：安装入口不许认识测试环境）：
 
 1. **静态扫**：把 7 个密闭套件 ＋ `test/unit/*.test.mjs` 的源码过一遍本机状态名字 ——
    `homedir(`／`USERPROFILE`／`APPDATA`／`LOCALAPPDATA`／`.agents`／`.dsh/`。
@@ -123,6 +124,14 @@ node test/tools/driver.mjs              # agent：控制口 http://127.0.0.1:774
    再把 `HOME`/`USERPROFILE`/`APPDATA`/`LOCALAPPDATA` 指到空的 `test/env/tmp/decoupled/home`、
    `TMP`/`TEMP`/`TMPDIR` 指到 `test/env/tmp/decoupled/tmp`。于是"偷偷读一次家目录"也只能读到空目录。
    `run.mjs` 的报告里有一节 `decoupled`，写着这次剥了什么、扫了哪些文件。
+3. **反向扫**：仓根 `scripts/` 下那几个人运行的安装入口（今天只有 `scripts/install-local.mjs`）
+   的源码里不许出现指向测试树的路径写法（正则 `test[\\/]`）。命中就打印
+   `FAILED: an install entry writes a path into the test tree — …` 并 exit 1，报告里列出
+   哪个文件、撞上哪个词。理由同样是"两条路互不认识"：装桌面 profile 的那条只认真实桌面家、
+   家在仓内就整棵拒绝（所以它本来不需要点名任何目录），反过来也不该有任何一个入口把仓内的
+   测试家当成真的家 —— 会写成那种路径的，基本就是"顺手拿隔离家试一下"这种幻觉。
+   **扫描范围不含 `plugin/scripts/**`**：那些是构建/取件工具，会合法地给人打印
+   `next: node test/run.mjs` 这类提示。
 
 **`live` 层的凭据也一律显式**（`test/lib/live-credentials.mjs`，`live-route` 与 `own-host-check` 共用）：
 

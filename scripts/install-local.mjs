@@ -22,11 +22,17 @@
  *   新文件就没了**。本脚本因此在动手之前先把 junction 那一层自己摘掉 —— `rmdir` 只摘
  *   reparse point、不递归 —— 实测这样能挡住。
  *
+ * 这个脚本是**人运行的安装入口**，住在仓根 `scripts/`，与测试环境分开：测试那套住在仓内的
+ * 测试目录里，入口是那个目录下的 `run.mjs`；这里只认真实桌面家 —— 家落在本仓里（不管哪个
+ * 目录）一律拒绝。两边各扫各的：那套的静态守卫查"测试层不许认识这台机器"，那边还有一道反
+ * 过来的，查"安装入口的源码里不许出现指向测试树的路径写法" —— 所以**本文件里连那种写法都
+ * 不写**（拒绝整棵树，本来就不需要点名任何一个目录）。
+ *
  * 用法：
- *   node plugin/scripts/install-local.mjs                     # 按 link 装进 web
- *   node plugin/scripts/install-local.mjs --profile web --tarball
- *   node plugin/scripts/install-local.mjs --check             # 只看装没装、能不能用
- *   node plugin/scripts/install-local.mjs --dry-run           # 只打印要跑的命令
+ *   node scripts/install-local.mjs                     # 按 link 装进 web
+ *   node scripts/install-local.mjs --profile web --tarball
+ *   node scripts/install-local.mjs --check             # 只看装没装、能不能用
+ *   node scripts/install-local.mjs --dry-run           # 只打印要跑的命令
  */
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -46,9 +52,9 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const HERE = dirname(fileURLToPath(import.meta.url)) // plugin/scripts
-const PLUGIN = resolve(HERE, '..') // plugin/
-const REPO = resolve(PLUGIN, '..') // 仓库根
+const HERE = dirname(fileURLToPath(import.meta.url)) // scripts（仓根）
+const REPO = resolve(HERE, '..') // 仓库根
+const PLUGIN = join(REPO, 'plugin') // plugin/
 const ENGINE_DIR = join(REPO, 'packages', 'engine-win32-x64')
 const PLUGIN_NAME = 'dsh-visible-ssh'
 const ENGINE_NAME = 'dsh-visible-ssh-engine-win32-x64'
@@ -262,8 +268,16 @@ if (dsh === null) {
 }
 if (!existsSync(dsh)) fail(`找不到 ${dsh}`)
 const home = dshHome(dsh)
+// 硬边界：仓内的「家」只可能是隔离/测试用的那一套，本脚本只认真实桌面家。这个判断不点名
+// 任何目录 —— 它拒绝的是**整棵仓库**，所以测试家天然在里面。
 if (inside(home, REPO)) {
-  fail(`dsh 的 home 落在本仓里（${home}）—— 那是测试用的隔离家，不是桌面版的家。用 --dsh 指定真的那个。`)
+  fail(`dsh 的 home 落在本仓里（${home}）—— 仓内的家只给隔离/测试用，不是桌面版的家。用 --dsh 指定真的那个（桌面版 dsh.cmd 里写着它）。`)
+}
+// 在 DSH 的壳里跑时，`DSH_HOME` 是宿主塞给子进程的（可能指着别的家）。真值只认 dsh.cmd。
+const inherited = process.env.DSH_HOME
+if (typeof inherited === 'string' && inherited.trim() !== ''
+  && resolve(inherited).toLowerCase() !== resolve(home).toLowerCase()) {
+  note(`  DSH_HOME=${inherited} 是继承来的，忽略；真值从 dsh.cmd 里读。`)
 }
 const profileDir = join(home, 'profiles', flags.profile)
 if (!existsSync(join(profileDir, 'package.json'))) {

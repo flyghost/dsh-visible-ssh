@@ -171,7 +171,7 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 `.plugin-manager/logs/*`，不是配置。
 
 > **2026-10-05 更新**：桌面 web profile 里**又有**这个插件了 —— `dsh-visible-ssh:
-> link:E:/GitHub/me/ssh/plugin`（用本仓的 `plugin/scripts/install-local.mjs` 装的，见 §2.5）。
+> link:E:/GitHub/me/ssh/plugin`（用本仓仓根的 `scripts/install-local.mjs` 装的，见 §2.5）。
 > 上面那段"已经摘除"只描述当时的状态；桌面里要生效仍然得**完全退出再打开**。
 
 另注：**仓内的隔离 seed 不受影响** —— `test/env/home.seed/profiles/web/package.json` 写的是
@@ -215,17 +215,21 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 
 改引擎二进制**不用**重启：插件每次调用都新起进程。
 
-### 2.5 一条命令装本机（`plugin/scripts/install-local.mjs`）
+### 2.5 一条命令装本机（仓根 `scripts/install-local.mjs`）
 
 上面那几条手工命令的打包版：它自己找到 `dsh`、从 `dsh.cmd` 里问出它用的 `DSH_HOME`、构建产物、
 缺 exe 就取一组、按你选的形式装进去，最后**按运行时同一条路**复验一遍。
 
+**它住在仓根 `scripts/`，与测试环境分开**：测试那套在 `test/`（`node test/run.mjs`），安装这条
+只认真实桌面家 —— 家的路径只要落在本仓里就一律拒绝（仓内的家只给隔离/测试用）。两个方向各有一道
+静态守卫：`test/` 那边不许出现这台机器的家，安装入口这边不许写出指向测试树的路径。
+
 ```powershell
-node plugin/scripts/install-local.mjs              # link 装进 web（默认；开发用，build 完就热更）
-node plugin/scripts/install-local.mjs --file       # 拷进 profile（不打包、不碰网络）
-node plugin/scripts/install-local.mjs --tarball    # 打成两个 tgz 再装（第三方拿到本仓后走的就是这条）
-node plugin/scripts/install-local.mjs --check      # 只看装没装、能不能用（不改任何东西）
-node plugin/scripts/install-local.mjs --dry-run    # 只打印要跑的命令
+node scripts/install-local.mjs              # link 装进 web（默认；开发用，build 完就热更）
+node scripts/install-local.mjs --file       # 拷进 profile（不打包、不碰网络）
+node scripts/install-local.mjs --tarball    # 打成两个 tgz 再装（第三方拿到本仓后走的就是这条）
+node scripts/install-local.mjs --check      # 只看装没装、能不能用（不改任何东西）
+node scripts/install-local.mjs --dry-run    # 只打印要跑的命令
 ```
 
 复验查的是：清单里的依赖 ＋ `dsh.profile.bundles` 里那一项 ＋ 装在哪（`realpath`）＋ 客户端产物

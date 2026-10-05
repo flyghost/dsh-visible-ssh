@@ -130,6 +130,33 @@ if (coupling.length > 0) {
   process.exit(1)
 }
 
+// 反方向的一道：**安装入口不认识测试环境**。上面那道管「测试层不认识这台机器」，
+// 这一道管另一边 —— 装桌面 profile 的那条路不许写出任何指向测试树的路径。它本来也
+// 不需要：家里落在仓内就一律拒绝（整棵树，不挑目录）。会写成 `test/` 的，几乎只能是
+// "顺手把隔离家当成真的家"这种幻觉。
+//
+// 只扫仓根 `scripts/**`（人运行的安装入口）。`plugin/scripts/**` 不在范围内：那些是
+// 构建/取件工具，会合法地给人打印「next: node test/run.mjs」这类提示。
+const INSTALL_DIR = join(HERE, '..', 'scripts')
+const installScripts = existsSync(INSTALL_DIR)
+  ? readdirSync(INSTALL_DIR).filter((name) => name.endsWith('.mjs'))
+  : []
+const testAware = []
+for (const name of installScripts) {
+  const text = readFileSync(join(INSTALL_DIR, name), 'utf8')
+  if (/test[\\/]/u.test(text)) testAware.push({ file: join('scripts', name), token: 'test/' })
+}
+
+if (testAware.length > 0) {
+  console.log(JSON.stringify({
+    ledger,
+    testAware,
+    scanned: installScripts.map((name) => join('scripts', name)),
+    verdict: 'FAILED: an install entry writes a path into the test tree — the install path may not know the test environment (it refuses any home inside this repository, so it never needs to name one), just as the test path may not know the operator\'s home',
+  }, null, 2))
+  process.exit(1)
+}
+
 // 跑密闭层时用的环境：家目录与临时目录都在仓内，且是空的。
 const DECOUPLED = join(HERE, 'env', 'tmp', 'decoupled')
 const DECOUPLED_HOME = join(DECOUPLED, 'home')

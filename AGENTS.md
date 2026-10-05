@@ -20,6 +20,7 @@
 | `README.md` ＋ `LICENSE`／`LICENSE.zh-CN` | **对外那一面**（2026-10-04 加）：根 README 是 GitHub 的落地页，中英对照（这是什么、装好之后有什么、快速上手、目录、远端要求、许可证）。许可证是 **Apache License 2.0**，两份文件分工明确：`LICENSE` 是 `apache.org` 的**逐字英文原文**（202 行 / 11358 B / sha256 `CFC7749B…`，**唯一有效文本**，那个 APPENDIX 模板故意没填没改），`LICENSE.zh-CN` 是非官方**中文参考译文**（开头写明译文仅供参考、以英文原文为准）。版权行 `Copyright 2026 flyghost` 写在两个文件的收尾小节与 README 的许可证小节里；四个 `package.json`（根／`plugin/`／`test/`／平台包）都写了 `"license": "Apache-2.0"`。**别翻译/改写 `LICENSE` 本身**，要改就改译文 |
 | `engine.lock`（在平台包里）＋ `test/artifact-check.mjs` | **产物身份锁**：三个 exe 的字节数/`sha256`、上游 commit、以及**来自哪个 Release 附件**（含附件 `sha256`）。锁**住在平台包里**（`packages/engine-win32-x64/engine.lock`，本身进版本管理），因为 exe 不进 git，身份只能记在这里；`plugin/scripts/engine-fetch.mjs --install --lock` 取件时顺手刷它（只换散文件时用 `plugin/scripts/engine-lock.mjs`），`artifact-check` 与插件的 `verify.ts` 都按它校验 |
 | `scripts/config/` | `host.toml`（真值，gitignore）＋ `.example` —— **引擎自己不找"用户目录"**，它只认 `--config <绝对路径>` 与 `SSH_CONFIG` 两条路。哪份算数由 `plugin/src/engine/config.ts` 的 `chooseHostConfig()` 决定：插件配置 `configPath` > `SSH_CONFIG` > 用户目录（Windows `%APPDATA%\visible-ssh\host.toml`，其它平台 `$XDG_CONFIG_HOME/visible-ssh/host.toml`）> 仓内这份（**后两个候选"存在才用"**）。开发期用仓内这份；装好之后用 `node plugin/scripts/host-config.mjs install` 种到用户目录（`… path`/`… show` 只谈路径，**从不打印内容**）。这份文件里**插件自己读**的只有一项：`[host] session`（引擎不认这个键，未知键照旧忽略），用来定缺省 tmux 会话窗口 —— 插件配置的 `defaultSession` 优先、`[host] session` 其次、都没有才用内置 `default`（`parseHostConfigSession()`，`cfg.sessionSource` 记明是哪一档）＋ `site-profile.md`（真值，gitignore）／`.example`：**站点标识对照表** —— 仓库里的文档与夹具只写 RFC 5737 占位符，哪个占位符当年对应哪台机器记在这里（只为人服务，代码与测试都不读它，见 `docs/test-baseline.md` §二十九） |
+| `scripts/install-local.mjs` | **装进本机桌面版 profile 的人运行入口**（2026-10-05 加；此前在 `plugin/scripts/`）：找 `dsh` → 从 `dsh.cmd` 里问出它的 `DSH_HOME` → 构建 → 缺 exe 就取一组 → 按 `link:`（默认）／`--file`／`--tarball` 装进去 → 按运行时同一条路复验。**它只认真实桌面家**：家的路径落在本仓里就一律拒绝（仓内的家只给隔离/测试用 —— 这条判断不点名任何目录）；装之前先把 profile 里那两个包名的 junction 摘掉（pnpm 换掉一条 `link:` 依赖时会顺着它删光目标），装完以 `plugin/src/index.ts` 还在不在作绊线。测试环境在 `test/`，两条路互不认识，见「怎么跑」里的两条 bullet |
 | `scripts/监控主机.bat` | 人双击即 attach 到 AI 正在工作的 pane（等价引擎的 `watch`） |
 | `scratch/` | 临时区（gitignore）：缓存 `cache/`、证据 `evidence/`，以及个别一次性实验目录。测试环境**已归 `test/env/`**；**备份不在这里**——归档一律放仓外 `E:\GitHub\me\_archive\` |
 
@@ -57,11 +58,12 @@ node test\live-route.mjs                       # 真 cordis ＋ 真 webServer �
 node test\own-host-check.mjs                   # 自起一台 web 宿主：token 栅栏 ＋ 三条路由 ＋ list 真过 SSH（8 项；浏览器那一半要人先起浏览器）。凭据同上，没给就打印 {skipped: …} 并 exit 0
 packages\engine-win32-x64\visible-ssh.exe doctor   # 只连不看屏，打印目标机事实
 node plugin\scripts\host-config.mjs path           # 这次引擎会读哪份 host.toml（只打印路径与候选，从不打印内容）
-node plugin\scripts\install-local.mjs              # 装进**本机**桌面版 profile（默认 link；还有 --file／--tarball／--check／--dry-run）
+node scripts\install-local.mjs                     # 装进**本机**桌面版 profile（仓根的人运行入口；默认 link，还有 --file／--tarball／--check／--dry-run）
 ```
 
 - **套件读的是产物 `plugin/lib/`**，所以 `run.mjs` 会先确认它不比 `plugin/src/`（含 `tsconfig.json`、`scripts/`）旧，旧了或缺失就自己跑 `plugin/scripts/build.mjs`；那一步要仓根的 typescript（`npm install` 装的），缺了会给一句明确的失败。改源码时想少跑一遍就 `npm run watch --workspace dsh-visible-ssh`。
-- **`link:` 装过之后别再让 pnpm 换掉那条依赖**：桌面 profile 里的 `node_modules/dsh-visible-ssh` 是指向本仓 `plugin/` 的 **junction**，pnpm 把这条 `link:` 换成别的形式（`file:`／tarball／版本号）时会在 Windows 上**顺着 junction 删光目标里的内容**（2026-10-05 实测把 `plugin/` 删空；`git checkout -- plugin` 能救回**已跟踪**的文件，未跟踪的新文件就没了）。换形式走 `node plugin\scripts\install-local.mjs`（它装之前只摘链接、不递归），细节见 `plugin/README.md` §2.5。
+- **`link:` 装过之后别再让 pnpm 换掉那条依赖**：桌面 profile 里的 `node_modules/dsh-visible-ssh` 是指向本仓 `plugin/` 的 **junction**，pnpm 把这条 `link:` 换成别的形式（`file:`／tarball／版本号）时会在 Windows 上**顺着 junction 删光目标里的内容**（2026-10-05 实测把 `plugin/` 删空；`git checkout -- plugin` 能救回**已跟踪**的文件，未跟踪的新文件就没了）。换形式走 `node scripts\install-local.mjs`（仓根那个入口，装之前只摘链接、不递归），细节见 `plugin/README.md` §2.5。
+- **安装与测试两条路互不认识**：安装入口是仓根 `scripts/install-local.mjs`（人跑的），测试环境是 `test/`（`node test\run.mjs` 是门禁）。安装这条只认真实桌面家 —— 家的路径落在本仓里就一律拒绝（仓内的家只给隔离/测试用，所以它不需要点名任何目录）；反方向由 `test/run.mjs` 的两道静态守卫钉住：密闭套件的源码里不许出现这台机器的家，仓根 `scripts/**` 里不许写出指向测试树的路径。
 - **验证降档**（默认工作方式）：只跑目标层测试 ＋ 退出码，不做全仓普查。
 - **加检查项只改一处**：新套件放进 `test/` 后**必须登记进 `test/run.mjs` 的台账**（`HERMETIC` 或 `OPT_IN`），否则门禁按名字报 `FAILED: the suite ledger is out of date` —— 漏跑本来是静默的，那条守卫就是为这个存在的。
 - `live-*`／`own-host-check`／`boot-graph` 默认不跑，各自的前提与"缺前提时怎么办"列在 `test/README.md` 的表里。
