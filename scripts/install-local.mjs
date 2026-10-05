@@ -12,6 +12,11 @@
  * 用通配，不写死 "DSH Desktop"，所以社区版/别的壳换个名字也照样找得到。装到哪儿**只由选中
  * 的那个 dsh.cmd 里 `set "DSH_HOME=…"` 决定**，脚本不认产品名、也不认安装目录。
  *
+ * 桌面版自带一份 pnpm（`<APPDATA>\<产品>\runtime-commands\generations\<代>\bin\pnpm.cmd`），
+ * 宿主会把它注入**自己起的**子进程的 PATH。双击 `安装到本机.bat` 时没有那层注入，所以本脚本
+ * 自己去找那份 pnpm 并把它的目录放到 PATH 最前面 —— 这一步发生在**摘 junction 之前**，免得
+ * 装到一半才发现（2026-10-05 用户双击时踩到：`'pnpm' is not recognized`，而 junction 已经摘了）。
+ *
  * 三种形式：
  *   （默认）`link:`  —— 指向本仓 `plugin/` 的 junction。改完 `npm run build` 就热更，
  *                       开发用这个。
@@ -60,7 +65,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -399,6 +404,66 @@ function dshHome(dsh) {
 }
 
 // ---------------------------------------------------------------------------
+// pnpm：桌面版自己带一份（<产品>\runtime-commands\<代>\bin\pnpm.cmd），
+// 而 `dsh plugin add` 只是把参数转给 pnpm。宿主给子进程的 PATH 里有那条路径，
+// 双击 bat 时没有那层注入 —— `'pnpm' is not recognized` 就是这么来的。
+// ---------------------------------------------------------------------------
+
+function newestPnpm(product) {
+  const generations = join(product, 'runtime-commands', 'generations')
+  if (!existsSync(generations)) return null
+  const candidates = []
+  for (const generation of readdirSync(generations)) {
+    const file = join(generations, generation, 'bin', 'pnpm.cmd')
+    if (existsSync(file)) candidates.push({ path: file, when: statSync(file).mtimeMs })
+  }
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => b.when - a.when)
+  return candidates[0].path
+}
+
+function findPnpm(dsh) {
+  const where = spawnSync('where.exe', ['pnpm'], { encoding: 'utf8' })
+  if (where.status === 0) {
+    const line = String(where.stdout ?? '')
+      .split(/\r?\n/u)
+      .map((row) => row.trim())
+      .find((row) => row !== '')
+    if (line !== undefined && existsSync(line)) return { path: line, source: 'PATH' }
+  }
+  // 从选中的那个 dsh 反推产品目录 <APPDATA>\<产品>；它不在 host-commands 下
+  // （npm 装的）就把 APPDATA 下每个带 runtime-commands 的产品都看一眼。
+  const products = []
+  const hit = HOST_COMMANDS.exec(dsh)
+  if (hit !== null) products.push(hit[1])
+  if (existsSync(APPDATA)) {
+    for (const entry of readdirSync(APPDATA, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const product = join(APPDATA, entry.name)
+      if (!products.includes(product) && existsSync(join(product, 'runtime-commands'))) products.push(product)
+    }
+  }
+  const found = []
+  for (const product of products) {
+    const path = newestPnpm(product)
+    if (path !== null) found.push({ path, when: statSync(path).mtimeMs, product })
+  }
+  if (found.length === 0) return null
+  found.sort((a, b) => b.when - a.when)
+  return { path: found[0].path, source: basename(found[0].product) }
+}
+
+// 把住着 pnpm 的那一代 bin 目录放到 PATH 最前面，后面所有子进程（npm、dsh、pnpm）
+// 都看得见。返回它做了什么，好让调用方决定要不要说一句。
+function usePnpm(dsh) {
+  const pnpm = findPnpm(dsh)
+  if (pnpm === null) return null
+  if (pnpm.source === 'PATH') return { ...pnpm, added: false }
+  process.env.PATH = `${dirname(pnpm.path)}${delimiter}${process.env.PATH ?? ''}`
+  return { ...pnpm, added: true }
+}
+
+// ---------------------------------------------------------------------------
 // junction：pnpm 会顺着它删目标，所以在把依赖换形式之前先自己摘掉
 // ---------------------------------------------------------------------------
 
@@ -591,6 +656,20 @@ function packTarballs() {
 }
 
 step(5, `装进 ${flags.profile}（${flags.mode}）`)
+
+// 先确认 pnpm 找得到 —— 这一步必须在摘 junction 之前：`dsh plugin add` 只是把参数
+// 转给 pnpm，双击 bat 时 PATH 上没有它（宿主只在它自己起的子进程里注入那条路径），
+// 等装到一半才发现就晚了（junction 已摘掉，profile 会成断链）。
+const pnpm = usePnpm(dsh)
+if (pnpm === null) {
+  fail(
+    `找不到 pnpm —— dsh 装插件是把它转给 pnpm 的，而桌面版自带那份在 ` +
+      `<APPDATA>\\<产品>\\runtime-commands\\generations\\<代>\\bin\\pnpm.cmd。` +
+      `从 DSH 里开的终端跑就有；双击 bat 时请确认 DSH Desktop 装好且至少启动过一次。`,
+  )
+}
+if (pnpm.added) note(`  PATH 上没有 pnpm，用 dsh 自带的那份：${pnpm.path}（${pnpm.source}）`)
+
 const specs =
   flags.mode === 'link'
     ? [`link:${slash(PLUGIN)}`]
@@ -620,7 +699,11 @@ if (flags.dryRun) {
     writeFileSync(manifestFile, manifestBefore)
     note(`  ！安装没把 ${PLUGIN_NAME} 写进清单，已把清单还原成装之前那份`)
   }
-  if (result.status !== 0) fail(`安装没跑过（退出码 ${result.status}）：${installLine}`)
+  if (result.status !== 0) {
+    note(`  ！profile 里的 node_modules\\${PLUGIN_NAME} 这会儿多半是空的（清单还留着那条依赖）：`)
+    note('    把上面那个原因解决掉，再跑一次这个脚本就装回去了。')
+    fail(`安装没跑过（退出码 ${result.status}）：${installLine}`)
+  }
 
   // link 模式下引擎是从仓里解析的（插件经 junction 解回本仓，本仓 node_modules 里就有
   // 那个平台包），profile 里不必再留一份 file:/tarball 拷贝 —— 而且 scratch/dist 一清，

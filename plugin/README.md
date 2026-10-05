@@ -225,6 +225,13 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 双击给不出参数时它会 `pause`，用 `--list-dsh`／`--check` 这类带参数的方式跑则直接退出）。
 装完记得**完全退出 DSH Desktop 再打开**，宿主才加载新产物。
 
+**双击独有的那个坑（2026-10-05 踩到）**：`dsh plugin add` 只是把参数转发给 pnpm，而桌面版自带的那份
+pnpm 在 `<APPDATA>\<产品>\runtime-commands\generations\<代>\bin\pnpm.cmd` —— 宿主只会把它注入**自己起的**
+子进程的 PATH，Explorer 双击起来的那个窗口没有这层注入，于是 `'pnpm' is not recognized as an internal or
+external command`。脚本现在自己去找一份（从选中的 `dsh.cmd` 反推产品目录，取那代最新的 `bin\pnpm.cmd`，
+找不到就报错退出），把它的目录放到 PATH 最前面；**这一步排在摘 junction 之前** —— 否则装到一半才发现，
+profile 就断链了（清单里还留着 `link:…`，`node_modules` 里那份却已经被摘掉）。
+
 **它住在仓根 `scripts/`，与测试环境分开**：测试那套在 `test/`（`node test/run.mjs`），安装这条
 只认真实桌面家 —— 家的路径只要落在本仓里就一律拒绝（仓内的家只给隔离/测试用）。两个方向各有一道
 静态守卫：`test/` 那边不许出现这台机器的家，安装入口这边不许写出指向测试树的路径。
