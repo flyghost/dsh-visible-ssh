@@ -17,6 +17,12 @@
  * 自己去找那份 pnpm 并把它的目录放到 PATH 最前面 —— 这一步发生在**摘 junction 之前**，免得
  * 装到一半才发现（2026-10-05 用户双击时踩到：`'pnpm' is not recognized`，而 junction 已经摘了）。
  *
+ * 装的那一步**默认带 `--offline`**：这一步只是把一条 `link:`／`file:`／tarball 依赖写进
+ * profile，别的依赖早就装好了（锁文件里记着、store 里躺着），本来不需要联网 —— 联网反而
+ * 会：① 网络不通时对着 registry 一路重试到超时（2026-10-05 实测这台机器上
+ * registry.npmjs.org 被解析到别处，pnpm 报 `ERR_TLS_CERT_ALTNAME_INVALID`）；② 顺手把别的
+ * 插件按 range 升到最新。离线跑不动（store 里确实缺东西）才退回联网重试一次。
+ *
  * 三种形式：
  *   （默认）`link:`  —— 指向本仓 `plugin/` 的 junction。改完 `npm run build` 就热更，
  *                       开发用这个。
@@ -689,11 +695,22 @@ const manifestFile = join(profileDir, 'package.json')
 const manifestBefore = readFileSync(manifestFile, 'utf8')
 const installLine = `${quote(dsh)} plugin --profile ${flags.profile} add ${specs.map(quote).join(' ')}`
 if (flags.dryRun) {
-  note(`  $ ${installLine}`)
+  note(`  $ ${installLine} --offline`)
 } else {
   // 这一步不借 run()：它会在非零退出码上直接 process.exit，而这里失败时还要
   // 先把 profile 清单还原回去（pnpm 半途出事时清单可能被改坏）。
-  const result = shell(installLine, { cwd: profileDir })
+  // 默认加 `--offline`：这一步只是把一条 link:/file:/tarball 依赖写进 profile，别的
+  // 依赖早就装好了（锁文件里记着、store 里躺着），本来不需要联网。联网那条路有两处
+  // 坏处：① 网络不通时 pnpm 会对着 registry 一路重试到超时（2026-10-05 实测这台机器
+  // 上 registry.npmjs.org 被解析到别处，pnpm 报 ERR_TLS_CERT_ALTNAME_INVALID，
+  // 重试要等好几分钟）；② `add` 会顺手把别的插件按 range 升到最新（实测把
+  // billion-context 0.1.183 顶成 0.1.184）—— 装我们的插件不该动别人的版本。
+  // 离线跑不动（store 里确实缺东西）才退回联网一次。
+  let result = shell(`${installLine} --offline`, { cwd: profileDir })
+  if (result.status !== 0) {
+    note('  ！离线装没跑过（store 里可能缺东西），退回联网再试一次 —— 网络不好时这里会等很久')
+    result = shell(installLine, { cwd: profileDir })
+  }
   const after = existsSync(manifestFile) ? readFileSync(manifestFile, 'utf8') : ''
   if (after.trim() === '' || !after.includes(PLUGIN_NAME)) {
     writeFileSync(manifestFile, manifestBefore)

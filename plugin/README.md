@@ -232,6 +232,13 @@ external command`。脚本现在自己去找一份（从选中的 `dsh.cmd` 反�
 找不到就报错退出），把它的目录放到 PATH 最前面；**这一步排在摘 junction 之前** —— 否则装到一半才发现，
 profile 就断链了（清单里还留着 `link:…`，`node_modules` 里那份却已经被摘掉）。
 
+**装的那一步默认带 `--offline`（2026-10-05 加）**：这一步只是把一条 `link:`／`file:`／tarball
+依赖写进 profile，别的依赖早就装好了（锁文件里记着、store 里躺着），本来不需要联网。联网那条路
+有两处坏处：① 网络不通时 pnpm 会对着 registry 一路重试到超时 —— 实测这台机器上
+`registry.npmjs.org` 被 DNS 指到别处，pnpm 卡在 `ERR_TLS_CERT_ALTNAME_INVALID` 上重试好几分钟；
+② `add` 会顺手把别的插件按 range 升到最新（实测把 `billion-context` 0.1.183 顶成 0.1.184）。
+离线跑不动（store 里确实缺东西）才退回联网重试一次。
+
 **它住在仓根 `scripts/`，与测试环境分开**：测试那套在 `test/`（`node test/run.mjs`），安装这条
 只认真实桌面家 —— 家的路径只要落在本仓里就一律拒绝（仓内的家只给隔离/测试用）。两个方向各有一道
 静态守卫：`test/` 那边不许出现这台机器的家，安装入口这边不许写出指向测试树的路径。
