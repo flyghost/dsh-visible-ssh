@@ -7,6 +7,11 @@
  * 把两头接起来：找到 dsh、问出它用的 home、构建本仓产物、必要时取引擎产物、按你选的
  * 形式装进去、最后按**运行时同一条路**复验一遍。
  *
+ * 它认得两种 dsh：PATH 上的（`where dsh`）与各个 DSH 产品生成在
+ * `<APPDATA>\<产品>\host-commands\<bucket>\generations\<代>\bin\dsh.cmd` 的 —— 产品目录名
+ * 用通配，不写死 "DSH Desktop"，所以社区版/别的壳换个名字也照样找得到。装到哪儿**只由选中
+ * 的那个 dsh.cmd 里 `set "DSH_HOME=…"` 决定**，脚本不认产品名、也不认安装目录。
+ *
  * 三种形式：
  *   （默认）`link:`  —— 指向本仓 `plugin/` 的 junction。改完 `npm run build` 就热更，
  *                       开发用这个。
@@ -29,10 +34,16 @@
  * 不写**（拒绝整棵树，本来就不需要点名任何一个目录）。
  *
  * 用法：
- *   node scripts/install-local.mjs                     # 按 link 装进 web
+ *   node scripts/install-local.mjs                     # 按 link 装进 web（有多个 dsh 时会问你）
  *   node scripts/install-local.mjs --profile web --tarball
+ *   node scripts/install-local.mjs --list-dsh          # 只列出这台机器上的 dsh 和它们的家
+ *   node scripts/install-local.mjs --pick 2            # 不问，直接选第 2 个目标
  *   node scripts/install-local.mjs --check             # 只看装没装、能不能用
  *   node scripts/install-local.mjs --dry-run           # 只打印要跑的命令
+ *
+ * 「装到哪个 DSH」＝「装到哪个家」：`DSH_HOME` 相同的多个 CLI 只算**一个**目标（取那一代
+ * 最新的当代表），所以同一台机器上装了桌面版又装了社区版、但两者共用一个家时，你只会看到
+ * 一项、也不会装错。想完全绕开选择就用 `--dsh <dsh.cmd 路径>`。
  */
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -49,7 +60,8 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
+import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url)) // scripts（仓根）
@@ -63,6 +75,8 @@ const EXES = ['visible-ssh.exe', 'visible-ssh-askpass.exe', 'visible-ssh-launch.
 const flags = {
   profile: 'web',
   dsh: null,
+  pick: null,
+  listDsh: false,
   mode: 'link',
   check: false,
   dryRun: false,
@@ -140,6 +154,12 @@ for (let i = 0; i < argv.length; i += 1) {
     case '--dsh':
       flags.dsh = value()
       break
+    case '--pick':
+      flags.pick = value()
+      break
+    case '--list-dsh':
+      flags.listDsh = true
+      break
     case '--tarball':
       flags.mode = 'tarball'
       break
@@ -198,30 +218,176 @@ function run(line, options = {}) {
 // 找 dsh、问出它用的 home
 // ---------------------------------------------------------------------------
 
-function findDsh() {
-  const found = spawnSync('where.exe', ['dsh'], { encoding: 'utf8' })
-  const lines = (found.stdout ?? '')
-    .split(/\r?\n/)
-    .map((row) => row.trim())
-    .filter((row) => row !== '')
-  const preferred = lines.find((row) => /\.cmd$/i.test(row)) ?? lines[0]
-  if (preferred !== undefined && existsSync(preferred)) return preferred
+// 桌面版把 CLI 生成在 <产品目录>\host-commands\<bucket>\generations\<代>\bin\dsh.cmd。
+// 产品目录名不写死（社区版/别的壳可能叫别的名字），所以这一层用通配扫。
+const HOST_COMMANDS = /^(.*)[\\/]host-commands[\\/]([^\\/]+)[\\/]generations[\\/]([^\\/]+)[\\/]bin[\\/]dsh\.cmd$/i
+const APPDATA = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming')
 
-  // 桌面版把 CLI 生成在 host-commands/<profile>/generations/<hash>/bin/ 下，取最新的一代
-  const root = join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'DSH Desktop', 'host-commands')
-  if (!existsSync(root)) return null
-  let best = null
-  for (const bucket of readdirSync(root)) {
-    const generations = join(root, bucket, 'generations')
-    if (!existsSync(generations)) continue
-    for (const generation of readdirSync(generations)) {
-      const candidate = join(generations, generation, 'bin', 'dsh.cmd')
-      if (!existsSync(candidate)) continue
-      const when = statSync(candidate).mtimeMs
-      if (best === null || when > best.when) best = { when, path: candidate }
-    }
+function describeDsh(path) {
+  const match = HOST_COMMANDS.exec(path)
+  if (match === null) return basename(path)
+  const product = name(match[1].split(/[\\/]/).pop())
+  return `${product} · ${match[2]} 代`
+}
+
+function name(text) {
+  return typeof text === 'string' && text !== '' ? text : '?'
+}
+
+function isCmd(candidate) {
+  return /\.cmd$/i.test(candidate.path) ? 1 : 0
+}
+
+function formatWhen(ms) {
+  const at = new Date(ms)
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${at.getFullYear()}/${pad(at.getMonth() + 1)}/${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`
+}
+
+// `dsh.cmd` 最后一行起的是产品自己的 Electron/Node 可执行文件；顺着它能问到产品版本，
+// 方便在多产品并存时分辨谁是谁（`.generation.json` 里只有 contentHash，没有版本）。
+function appVersionOf(dsh) {
+  let text
+  try {
+    text = readFileSync(dsh, 'utf8')
+  } catch {
+    return null
   }
-  return best === null ? null : best.path
+  const exe = /^\s*"([^"]+\.exe)"/im.exec(text)
+  if (exe === null) return null
+  try {
+    const manifest = JSON.parse(readFileSync(join(dirname(exe[1]), 'resources', 'app', 'package.json'), 'utf8'))
+    return typeof manifest.version === 'string' ? manifest.version : null
+  } catch {
+    return null
+  }
+}
+
+// 这台机器上所有能当 CLI 用的 dsh。两条来源：PATH 上的，以及各产品 host-commands 里的代。
+function scanDsh() {
+  const found = []
+  const seen = new Set()
+  const add = (path, source) => {
+    if (typeof path !== 'string' || path === '') return
+    const key = resolve(path).toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    if (!existsSync(path)) return
+    found.push({ path, source, when: statSync(path).mtimeMs })
+  }
+
+  // ① PATH 上的（`where` 按 PATHEXT 把 dsh.cmd / dsh.exe / dsh.bat / dsh.ps1 都列出来）
+  const onPath = spawnSync('where.exe', ['dsh'], { encoding: 'utf8' })
+  for (const row of (onPath.stdout ?? '').split(/\r?\n/)) {
+    const line = row.trim()
+    if (line !== '') add(line, 'PATH')
+  }
+
+  // ② 各产品 host-commands 下的代目录
+  if (existsSync(APPDATA)) {
+    for (const product of readdirSync(APPDATA)) {
+      const root = join(APPDATA, product, 'host-commands')
+      if (!existsSync(root)) continue
+      for (const bucket of readdirSync(root)) {
+        const generations = join(root, bucket, 'generations')
+        if (!existsSync(generations)) continue
+        for (const generation of readdirSync(generations)) {
+          add(join(generations, generation, 'bin', 'dsh.cmd'), '扫描')
+        }
+      }
+    }
+    // ③ npm 全局 bin（`npm i -g dsh` 会落在这儿；它同时在 PATH 上时 ① 已经收过）
+    for (const file of ['dsh.cmd', 'dsh.exe', 'dsh']) add(join(APPDATA, 'npm', file), 'npm')
+  }
+  return found
+}
+
+// 把 CLI 按「家」归并：装到哪儿只看 DSH_HOME，所以同一个家的多个代只算一个目标。
+function groupByHome(found) {
+  const groups = new Map()
+  for (const candidate of found) {
+    const home = dshHome(candidate.path)
+    const key = resolve(home).toLowerCase()
+    if (!groups.has(key)) groups.set(key, { home, members: [] })
+    groups.get(key).members.push({ ...candidate, home })
+  }
+  const list = [...groups.values()]
+  for (const group of list) {
+    // 代表取那一代最新的 `.cmd`：家只能从 .cmd 的文本里问出来，所以优先 .cmd。
+    group.members.sort((a, b) => isCmd(b) - isCmd(a) || b.when - a.when)
+    group.representative = group.members[0]
+  }
+  list.sort((a, b) => b.representative.when - a.representative.when)
+  return list
+}
+
+function profileState(home, profile) {
+  const manifest = join(home, 'profiles', profile, 'package.json')
+  if (!existsSync(manifest)) return { ready: false, spec: null }
+  try {
+    const json = JSON.parse(readFileSync(manifest, 'utf8'))
+    const spec = json?.dependencies?.[PLUGIN_NAME]
+    return { ready: true, spec: typeof spec === 'string' ? spec : null }
+  } catch {
+    return { ready: true, spec: null }
+  }
+}
+
+function printTargets(found, groups) {
+  note(`本机找到 ${found.length} 个 dsh CLI，按「家」归并成 ${groups.length} 个可装的目标：`)
+  groups.forEach((group, index) => {
+    const head = group.representative
+    const version = appVersionOf(head.path)
+    const label = [describeDsh(head.path), formatWhen(head.when)]
+    if (version !== null) label.push(`v${version}`)
+    const state = profileState(group.home, flags.profile)
+    note('')
+    note(`  [${index + 1}] ${label.join(' · ')}`)
+    note(`      CLI      ${head.path}   （${head.source}）`)
+    note(`      家       ${group.home}`)
+    note(`      profile  ${join(group.home, 'profiles', flags.profile)}${state.ready ? '   （就绪）' : '   （没有 package.json —— 先启动一次这个 DSH）'}`)
+    if (state.spec !== null) note(`      已装过   ${PLUGIN_NAME} = ${state.spec}`)
+    const others = group.members.slice(1)
+    if (others.length > 0) {
+      note(`      同一个家的另外 ${others.length} 个 CLI：${others.map((item) => `${describeDsh(item.path)} · ${formatWhen(item.when)}`).join('、')}`)
+    }
+  })
+  note('')
+}
+
+async function chooseTarget(groups) {
+  if (flags.pick !== null) {
+    if (!/^[0-9]+$/.test(flags.pick)) fail(`--pick 只收序号数字，收到的是 ${flags.pick}`)
+    const index = Number.parseInt(flags.pick, 10)
+    if (index < 1 || index > groups.length) fail(`--pick ${flags.pick} 超出范围：本机有 ${groups.length} 个目标`)
+    return groups[index - 1]
+  }
+  if (groups.length === 1) {
+    note('只有一个目标，直接用它。')
+    return groups[0]
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      let answer
+      try {
+        answer = await rl.question(`装到哪一个？输入序号 [1-${groups.length}]，直接回车取消：`)
+      } catch {
+        break // stdin 里没有可读的行（管道空着、或控制台被关掉）
+      }
+      const text = answer.trim()
+      if (text === '') break
+      if (/^[0-9]+$/.test(text)) {
+        const index = Number.parseInt(text, 10)
+        if (index >= 1 && index <= groups.length) return groups[index - 1]
+      }
+      note(`  没有第 ${text} 个。`)
+    }
+  } finally {
+    rl.close()
+  }
+  fail(`没选目标。指定一个用 --dsh <dsh.cmd 路径>，或 --pick <序号>；只想看看就用 --list-dsh。`)
 }
 
 // 桌面版的 `dsh.cmd` 里写死了 `set "DSH_HOME=…"`，所以这个值只能从它身上问出来。
@@ -261,10 +427,22 @@ function guardPluginTree() {
 // 主流程
 // ---------------------------------------------------------------------------
 
-step(1, '找 dsh 与它的 profile')
-const dsh = flags.dsh ?? findDsh()
+step(1, '找 dsh 与它的 profile（本机可能有多个 DSH）')
+const found = scanDsh()
+const groups = groupByHome(found)
+if (flags.listDsh) {
+  printTargets(found, groups)
+  process.exit(0)
+}
+let dsh = flags.dsh
 if (dsh === null) {
-  fail('PATH 上没有 dsh，也没找到桌面版的 host-commands。先装一次 DSH Desktop，或用 --dsh <dsh.cmd 路径> 指定。')
+  if (groups.length === 0) {
+    fail(`这台机器上没找到 dsh：PATH 里没有，${APPDATA} 下各产品的 host-commands 里也没有。先装一次 DSH Desktop，或用 --dsh <dsh.cmd 路径> 指定。`)
+  }
+  printTargets(found, groups)
+  const target = await chooseTarget(groups)
+  dsh = target.representative.path
+  note(`选中的 CLI：${dsh}`)
 }
 if (!existsSync(dsh)) fail(`找不到 ${dsh}`)
 const home = dshHome(dsh)

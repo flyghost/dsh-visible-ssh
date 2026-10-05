@@ -220,17 +220,35 @@ node "<DSH app>\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin --profile web r
 上面那几条手工命令的打包版：它自己找到 `dsh`、从 `dsh.cmd` 里问出它用的 `DSH_HOME`、构建产物、
 缺 exe 就取一组、按你选的形式装进去，最后**按运行时同一条路**复验一遍。
 
+**双击也行**：`scripts\安装到本机.bat` 只做两件事 —— 看 `node` 在不在，然后把参数原样转给这个
+`.mjs`（中文全由 Node 打印，所以那个 `.bat` 自己的正文是纯 ASCII，靠 `chcp 65001` 让中文不乱码；
+双击给不出参数时它会 `pause`，用 `--list-dsh`／`--check` 这类带参数的方式跑则直接退出）。
+装完记得**完全退出 DSH Desktop 再打开**，宿主才加载新产物。
+
 **它住在仓根 `scripts/`，与测试环境分开**：测试那套在 `test/`（`node test/run.mjs`），安装这条
 只认真实桌面家 —— 家的路径只要落在本仓里就一律拒绝（仓内的家只给隔离/测试用）。两个方向各有一道
 静态守卫：`test/` 那边不许出现这台机器的家，安装入口这边不许写出指向测试树的路径。
+
+**本机装了不止一个 DSH 时它会先问你装哪个。** 脚本扫两处：PATH 上的 `where dsh`，以及各产品目录下的
+`<APPDATA>\<产品>\host-commands\<bucket>\generations\<代>\bin\dsh.cmd`（**产品目录名是通配的**，
+不写死 `DSH Desktop`，社区版换个目录名也找得到）。装到哪儿只由选中的那个 `dsh.cmd` 里
+`set "DSH_HOME=…"` 决定，所以列表**按「家」归并**：`DSH_HOME` 相同的多个 CLI 只算**一个**目标
+（条目下会写"同一个家的另外 N 个 CLI"），组内取最新的那个当代表。每个目标会显示产品名 · 哪个桶 ·
+那代的时间 · 产品版本（从 `resources\app\package.json` 读）· 家 · 该家有没有 `profiles/<profile>` ·
+是不是已经装过本插件。只有一个目标就直接用，不问你；读不到输入（比如双击时把 stdin 关了）就退出，
+**不会静默替你猜一个**。
 
 ```powershell
 node scripts/install-local.mjs              # link 装进 web（默认；开发用，build 完就热更）
 node scripts/install-local.mjs --file       # 拷进 profile（不打包、不碰网络）
 node scripts/install-local.mjs --tarball    # 打成两个 tgz 再装（第三方拿到本仓后走的就是这条）
+node scripts/install-local.mjs --list-dsh   # 只列出本机所有 DSH（按家归并）与各自装没装，然后退出
+node scripts/install-local.mjs --pick 2     # 直接选第 2 个目标（不想回答提问时用）
 node scripts/install-local.mjs --check      # 只看装没装、能不能用（不改任何东西）
 node scripts/install-local.mjs --dry-run    # 只打印要跑的命令
 ```
+
+想完全绕开选择就用 `--dsh <dsh.cmd 路径>`：给了它，脚本不扫也不问。
 
 复验查的是：清单里的依赖 ＋ `dsh.profile.bundles` 里那一项 ＋ 装在哪（`realpath`）＋ 客户端产物
 字节数 ＋ 按 `realpath` 解析平台包 ＋ 跑一次 `visible-ssh.exe version` 要求 `"ok":true`。

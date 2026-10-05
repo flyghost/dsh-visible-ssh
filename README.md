@@ -26,6 +26,13 @@ AI 在远端主机上跑命令，通常你只能看到一段黑盒日志。这�
 ### 快速上手
 
 ```powershell
+node scripts/install-local.mjs   # 一条命令：找 dsh → 问出它的 DSH_HOME → build → 缺 exe 就取 → 装 link → 复验
+                                 # 装完完全退出 DSH Desktop 再打开。Windows 上双击 scripts\安装到本机.bat 也一样
+```
+
+要一步步自己来（或改这个插件本身）就用手工那套：
+
+```powershell
 npm install                                                          # 工作区依赖（构建工具）
 npm run build                                                        # src/**/*.ts → lib/
 node plugin/scripts/engine-fetch.mjs --tag v0.0.1 --install --lock   # 取引擎三个 exe（exe 不进 git）
@@ -41,6 +48,7 @@ dsh plugin --profile web add link:E:/path/to/dsh-visible-ssh/plugin  # 挂进 DS
 |---|---|
 | `plugin/` | 插件本体：宿主半 `src/**/*.ts` 编到 `lib/`，客户端半是手写的 `src/client/index.js` |
 | `packages/engine-win32-x64/` | 引擎平台包：三个 exe ＋ `engine.lock`（exe 不进 git，用 `engine-fetch.mjs` 取） |
+| `scripts/` | 人运行的入口：`install-local.mjs`（装进本机 DSH profile）、`安装到本机.bat`（双击版），以及 `config/` |
 | `scripts/config/` | `host.toml.example`（引擎的连接配置模板）与 `site-profile.md.example`（站点标识对照表模板） |
 | `test/` | 测试设施：单元测试 ＋ 7 个密闭套件 ＋ 隔离家（不碰你这台机器的 `~/.dsh`） |
 | `docs/` | 目标架构、测试基线、引擎产物与协议 |
@@ -85,6 +93,13 @@ JSON-envelope output).
 ### Quick start
 
 ```powershell
+node scripts/install-local.mjs   # one command: find dsh → read its DSH_HOME → build → fetch exes if missing → link-install → verify
+                                 # then fully quit and reopen DSH Desktop. On Windows, double-clicking scripts\安装到本机.bat does the same
+```
+
+To do it by hand (or to work on the plugin itself):
+
+```powershell
 npm install                                                          # workspace deps (build tooling)
 npm run build                                                        # src/**/*.ts → lib/
 node plugin/scripts/engine-fetch.mjs --tag v0.0.1 --install --lock   # fetch the three engine exes (not in git)
@@ -101,6 +116,7 @@ half) need `npm run build` followed by a host restart.
 |---|---|
 | `plugin/` | The plugin: host half `src/**/*.ts` compiled to `lib/`, client half hand-written in `src/client/index.js` |
 | `packages/engine-win32-x64/` | The engine platform package: three exes + `engine.lock` (exes are not tracked; fetch them with `engine-fetch.mjs`) |
+| `scripts/` | Human-run entry points: `install-local.mjs` (installs into your local DSH profile), `安装到本机.bat` (double-click version), plus `config/` |
 | `scripts/config/` | `host.toml.example` (engine connection template) and `site-profile.md.example` (site-identifier template) |
 | `test/` | Test facilities: unit specs + 7 hermetic suites + an isolated home (never touches your `~/.dsh`) |
 | `docs/` | Target architecture, test baseline, engine artifacts and protocol |
