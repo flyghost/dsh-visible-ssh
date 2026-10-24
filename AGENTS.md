@@ -15,7 +15,7 @@
 |---|---|
 | `plugin/` | **DSH 宿主插件 `dsh-visible-ssh`**：9 个面向模型的工具 ＋ 三条 `/visible-ssh/*` 路由 ＋ 右侧栏面板。源码在 `src/`（宿主侧 `.ts`，浏览器半边 `src/client/index.js` 是**手写的单文件、故意不进 tsc**），构建产物在 `lib/`（gitignore，`npm run build` 生成）。设置 → visible-ssh 那一节除了管理连接档案，还**只读**本机 `~/.ssh/config`（`src/connection/ssh-config.ts`）把配好的 Host 段列成候选，一键填进表单（别名原样进「主机」，仍由 ssh.exe 自己解析 —— 插件从不碰那个文件）；那张表表头有个「刷新」，按一下立刻重读一遍（那里本来就每 5 s 轮询一次，这格只是省掉等待）；表单里**密码不是必填** —— 留空就等于"这台走本机 `~/.ssh` 里的密钥"（插件只把 `SSH_HOST`／`SSH_PORT`／`SSH_USER` 交给 `ssh.exe`，只有存过密码时才多给一个 `SSH_PASSWORD`；认证真失败时引擎是**响的**）。**对话框里有两格**：输入框下面那一排里的「服务器」与「会话」（插进 `conversation.input.left` 槽位）。「服务器」只列设置里存过的那些连接，选中就换「当前连接」（`POST /visible-ssh/sessions {action:'activate'}`），9 个工具与右侧镜像面板跟着一起换机器；「会话」改的是**当前那条档案自己的 `session`**（`{action:'session'}`），也就是 AI 干活用哪个 tmux 会话 —— 工具与镜像都读它，重启宿主也还在，与面板里那个只改屏幕的「会话」不是一回事；两格旁边还有 `↻`，按一下立刻重读会话清单（一次枚举＝一条 SSH 连接，所以它**不**跟着 5 s 轮询走）；一台都没存就整格不占地方。右侧栏面板一次只照**一个**会话（一次取屏就是一条 SSH 连接），面板里并排两个下拉：**服务器**（= 设置里那份连接清单的「当前」，9 个工具跟着一起换机器）与**会话**（= 这一格屏幕在照谁，别的都不动；选过之后取屏就带上 `?session=`，选回第一项则不带参数，换服务器丢掉钉住的名字）。被照的那一行**整行高亮**并在小字行尾写「 · 正在镜像」（会话行上只剩「打开」「杀掉」两个动作），面板还会用一行字说明「正在镜像：会话 X · 跟随当前连接／已钉住」—— 那个 X 以**屏幕自己回报的**会话名为准（`shot.session`），所以宿主 payload 一时说不出"当前连接"时（`active === null`：换主机的间隙、或宿主侧还是启动时那份旧代码）也照样说得清，那行改读「跟随宿主默认」）。取屏失败**绝不留下空白**：失败原因与"下一次会自动重试"直接写进屏幕框，客户端也在 20 s 无回答时自己判超时并重试。**本仓的主体** |
 | `packages/engine-win32-x64/` | **引擎的平台包 `dsh-visible-ssh-engine-win32-x64`**：编译产物 `visible-ssh.exe` ＋ `visible-ssh-askpass.exe` ＋ `visible-ssh-launch.exe`（**三个必须同目录**）＋ 身份锁 `engine.lock` ＋ 它自己的 `README.md`。插件把它写进 `optionalDependencies`，运行时**按包名**解析（`plugin/src/engine/locate.ts` 的 `resolveEngine`），spawn 前用锁校验字节数与 `sha256`（`plugin/src/engine/verify.ts`）。**三个 exe 不进 git 跟踪**（`.gitignore` 按文件名忽略，包清单的 `files` 才是权威），所以新克隆的仓库里没有它们：用 `node plugin/scripts/engine-fetch.mjs --tag … --install --lock` 从上游 Release 取一组进来（现在这组是 Release `v0.0.1` / 上游 commit `4d729fe`），或 `npm run pack:engine` 打成 tarball 发出去 |
-| `test/` | **全部测试设施**：unit 层 127 项（vitest，`test/unit/**`，9 个 spec）＋ 7 个密闭套件（401 项）＋ 4 个 opt-in 检查（`run.mjs` 是唯一入口，它会先确认产物不比源码旧）＋ 跑测试用的小工具 ＋ **可重建的测试环境**。依赖树、隔离 DSH home、浏览器 profile 都在 gitignore 的 `test/env/` 下，而清单与模板（`test/package.json`、`test/env/host/package.json`、`test/env/home.seed/`）受版本管理。本机门禁是 `npm run ci`（build → typecheck → lint → `node test/run.mjs`）。见 `test/README.md` |
+| `test/` | **全部测试设施**：unit 层 148 项（vitest，`test/unit/**`，11 个 spec）＋ 7 个密闭套件（401 项）＋ 4 个 opt-in 检查（`run.mjs` 是唯一入口，它会先确认产物不比源码旧）＋ 跑测试用的小工具 ＋ **可重建的测试环境**。依赖树、隔离 DSH home、浏览器 profile 都在 gitignore 的 `test/env/` 下，而清单与模板（`test/package.json`、`test/env/host/package.json`、`test/env/home.seed/`）受版本管理。本机门禁是 `npm run ci`（build → typecheck → lint → `node test/run.mjs`）。见 `test/README.md` |
 | `package.json` ＋ `package-lock.json` | **开发期工作区根**（npm workspaces：`plugin`、`test`、`packages/engine-win32-x64` 三个成员）：`npm install` 把依赖提升到仓根 `node_modules/`，所以 `plugin/` 没有也不需要自己的 `node_modules`（那份曾是指向 `~/.dsh/profiles/node_modules` 的符号链接），而平台包在那里被链接成 `node_modules/dsh-visible-ssh-engine-win32-x64` —— **开发期与装到别的机器走的是同一条解析路径** |
 | `README.md` ＋ `LICENSE`／`LICENSE.zh-CN` | **对外那一面**（2026-10-04 加）：根 README 是 GitHub 的落地页，中英对照（这是什么、装好之后有什么、快速上手、目录、远端要求、许可证）。许可证是 **Apache License 2.0**，两份文件分工明确：`LICENSE` 是 `apache.org` 的**逐字英文原文**（202 行 / 11358 B / sha256 `CFC7749B…`，**唯一有效文本**，那个 APPENDIX 模板故意没填没改），`LICENSE.zh-CN` 是非官方**中文参考译文**（开头写明译文仅供参考、以英文原文为准）。版权行 `Copyright 2026 flyghost` 写在两个文件的收尾小节与 README 的许可证小节里；四个 `package.json`（根／`plugin/`／`test/`／平台包）都写了 `"license": "Apache-2.0"`。**别翻译/改写 `LICENSE` 本身**，要改就改译文 |
 | `engine.lock`（在平台包里）＋ `test/artifact-check.mjs` | **产物身份锁**：三个 exe 的字节数/`sha256`、上游 commit、以及**来自哪个 Release 附件**（含附件 `sha256`）。锁**住在平台包里**（`packages/engine-win32-x64/engine.lock`，本身进版本管理），因为 exe 不进 git，身份只能记在这里；`plugin/scripts/engine-fetch.mjs --install --lock` 取件时顺手刷它（只换散文件时用 `plugin/scripts/engine-lock.mjs`），`artifact-check` 与插件的 `verify.ts` 都按它校验 |
@@ -45,6 +45,18 @@ AI 用 `send-keys` 把命令**打**进 pane、用 `capture-pane` 读回屏幕；
 所以 AI 逐字执行的每个字符都可见，人可以自己敲、可以 Ctrl-C 接管、可以关掉窗口走开（会话存活）。
 这个性质来自 tmux 本身 —— 所以插件**不自己实现传输**，只驱动编译好的引擎。
 
+### 模型怎么知道该用它
+
+工具描述只回答「这个工具做什么」，而真正失手的场景是「模型根本没想起有这条路」。所以插件另给两段文本（`plugin/src/prompt/`）：
+
+| 段 | 机制 | 装什么 | 变不变 |
+|---|---|---|---|
+| 静态规则段 `section.ts` | `systemPrompt.section()`，order **950**（排在宿主 `TOOL_BASH` 1000 之前） | 远端的事走 `ssh_console_*`；在本机 shell 里 `ssh` 过去也"能用"，但人看不见 | 逐字节恒定、`interpolate:false` ⇒ 不打穿前缀缓存 |
+| 运行时快照 `runtime.ts` | `systemPrompt.context()`（每轮 user-role 快照） | target／session／**这个会话名是谁定的**（`arg`/`profile`/`config`/`file`/`default`） | 每轮重算 |
+
+两段的分界是**缓存**：会变的东西一律不许进系统提示前缀。同一份 `RuntimeView`（`plugin/src/state/view.ts`，工具／路由／提示三处共用）也进 `GET /visible-ssh/sessions` 的 `runtime` 字段 —— 面板与模型看同一份事实。
+`"default"` 那条禁令与它的出口（建私有会话）写在同一句里（`plugin/src/tools/law.ts` 的 `PANE_LAW`）：只写禁止不给出口，模型不会变谨慎，只会绕去本机 `ssh` —— 正好钻进禁令想避免的那条不可见通道。
+
 ## 怎么跑
 
 ```powershell
@@ -53,7 +65,7 @@ npm run build                                  # 构建插件：plugin/src -> pl
 npm run ci                                     # 本机 CI 一条命令：build → typecheck → lint → node test\run.mjs（四段；末段就是下面那条）
 npm run typecheck                              # 只跑 tsc --noEmit（plugin/ 的宿主侧源码）
 npm run lint                                   # 只跑 ESLint（仓根 eslint.config.mjs；产物、test\env、scratch 已忽略）
-node test\run.mjs                              # 插件：unit 127 项（vitest）＋ 7 个密闭套件（401 项）；离线，不需 DSH/网络/SSH
+node test\run.mjs                              # 插件：unit 148 项（vitest）＋ 7 个密闭套件（401 项）；离线，不需 DSH/网络/SSH
 node node_modules\vitest\vitest.mjs run --root test   # 只跑 unit 段（约 0.6 s，改纯函数时用这个）
 node test\live-route.mjs                       # 真 cordis ＋ 真 webServer ＋ 真 SSH ＋ 真引擎（DSH 运行时默认取仓内 test/env/host，可用 DSH_APP 换）；**凭据要显式给**：SSH_HOST=… SSH_USER=… [SSH_PORT=…] [SSH_PASSWORD=…]，或 VISIBLE_SSH_USE_REPO_CONFIG=1 明说就用仓里那份
 node test\own-host-check.mjs                   # 自起一台 web 宿主：token 栅栏 ＋ 三条路由 ＋ list 真过 SSH（8 项；浏览器那一半要人先起浏览器）。凭据同上，没给就打印 {skipped: …} 并 exit 0

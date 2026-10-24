@@ -36,6 +36,9 @@ import type { CredentialsService } from './connection/connections.js'
 import { registerWebRoutes } from './routes/index.js'
 import { adoptSettings } from './connection/settings.js'
 import { registerTools } from './tools/index.js'
+import { registerRemoteHostSection } from './prompt/section.js'
+import { registerRuntimeContext } from './prompt/runtime.js'
+import { refreshRuntime } from './state/view.js'
 
 /** 宿主的凭据缝；没有 provider 被组合时它整个不存在。 */
 declare module '@deepseek-ai/cordis' {
@@ -129,4 +132,18 @@ export function apply(ctx: Context, config: PluginConfig | undefined): void {
 
   ctx.effect(() => registerTools(ctx, cfg, connections, engine), 'dsh-visible-ssh: tools')
   registerWebRoutes(ctx, cfg, connections, engine)
+
+  // 「这条路存在」与「此刻是谁」两段文本，落进模型**做决定之前**就读得到的位置：
+  // 前者是系统提示里的静态规则段（逐字节恒定，不打穿前缀缓存），后者是每轮刷新的
+  // 运行时快照。缺了它们，本插件全部知识只存在于工具描述里——而那要等模型决定去
+  // 读那个工具之后才被展开，对一个"根本没想到有这条路"的模型毫无作用。
+  //
+  // `systemPrompt` 可能没有出现在某个组合里（headless/极简装配），所以走与 settings
+  // 同一条可选路径：缺失时插件其余部分照常工作，只是这两段文本不存在。
+  ctx.inject(['systemPrompt'], (promptCtx: Context) => {
+    // 先算一份事实，好让第一轮组装就有快照可读（之后每次工具调用与路由都会刷新）。
+    void refreshRuntime(cfg, connections)
+    promptCtx.effect(() => registerRemoteHostSection(promptCtx), 'dsh-visible-ssh: prompt section')
+    promptCtx.effect(() => registerRuntimeContext(promptCtx), 'dsh-visible-ssh: prompt context')
+  })
 }

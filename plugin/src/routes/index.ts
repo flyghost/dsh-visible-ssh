@@ -44,6 +44,7 @@ import type { Connections, ListedProfile, ProfileInput } from '../connection/con
 import { loadSshHosts } from '../connection/ssh-config.js'
 import type { SshConfigHost, SshHostList } from '../connection/ssh-config.js'
 import type { ResolvedConfig } from '../engine/config.js'
+import { rememberRuntime, runtimeView } from '../state/view.js'
 
 /**
  * 组合自身的 Host/Origin + 认证围栏。宿主组合了它才存在，所以这条路由只用
@@ -644,6 +645,12 @@ export function createSessionsHandler({
     const activeId = await connections.activeId()
     const active = listed.profiles.find((profile) => profile.id === activeId) ?? null
     const session = active?.session ?? cfg.defaultSession
+    // 同一份事实的第三个消费者（前两个是工具与模型上下文）。面板照着它显示
+    // 「此刻会在哪台机、哪个会话上干活」，与模型上下文里那段快照逐个字段同源——
+    // 两处说不一样的话，人才会以为插件没生效（这正是当初那张"下拉明明选了"的
+    // 疑团的土壤）。算这一遍顺手刷新缓存：面板那 5 s 一次的 GET 就是心跳。
+    const runtime = await runtimeView(cfg, connections)
+    rememberRuntime(runtime)
     return {
       source,
       active: active === null
@@ -664,6 +671,7 @@ export function createSessionsHandler({
       // null。远端到底有哪些会话由 POST 的 `list` action 回答（那是这条路由上唯一
       // 一次要付 SSH 的读），客户端拿它把行数长出来。
       sessions: source === 'none' ? [] : [{ name: session, exists: null }],
+      runtime,
     }
   }
 

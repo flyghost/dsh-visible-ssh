@@ -41,6 +41,10 @@
 |---|---|---|
 | `src/index.ts` | 宿主半入口：只做注册 | 要 |
 | `src/tools/index.ts` | 9 个模型工具的签名/描述/渲染 | 要 |
+| `src/tools/law.ts` | **PANE_LAW**：`"default"` 那条禁令与它的出口（建私有会话）写在同一句里，四条提到它的描述共用这一份文本 | 要 |
+| `src/state/view.ts` | **`RuntimeView`**：此刻的目标机、会话名、以及**这个会话名是谁定的**（`arg`/`profile`/`config`/`file`/`default`）的唯一算法；工具、路由、提示三处都读它，外加一份供同步消费者读的缓存 | 要 |
+| `src/prompt/section.ts` | 系统提示里的**静态**规则段（「远端的事走 `ssh_console_*`，别在本机 shell 里 ssh 过去」）：逐字节恒定、`interpolate: false`、order 950（排在 `TOOL_BASH` 1000 之前） | 要 |
+| `src/prompt/runtime.ts` | 每轮刷新的**运行时快照**（`visible-ssh runtime`：target / session / 会话名的来历 / 是否正落在人的 pane 上），走 `systemPrompt.context()`，不进系统提示前缀 | 要 |
 | `src/routes/index.ts` | 三条浏览器路由：镜像 `GET /visible-ssh/screen`（只读，`?session=` 指定照哪个 tmux 会话）、连接读写 `GET/POST /visible-ssh/connection`、面板动作 `GET/POST /visible-ssh/sessions` | 要 |
 | `src/connection/connections.ts` | 连接从哪来：设置页保存的 profile、凭据域里的密码、注入子进程的 `SSH_*` | 要 |
 | `src/shared/session-name.ts` | tmux 会话名校验（路由层与连接层共用） | 要 |
@@ -456,6 +460,30 @@ packages\engine-win32-x64\visible-ssh.exe doctor
 | `ssh_console_down` | 杀掉会话（**破坏性**，走审批） |
 | `ssh_console_watch` | 在本机弹一个附着到该 pane 的终端窗口（需 `wt.exe`） |
 
+### 模型怎么知道该用它（提示面，2026-10-06 起）
+
+9 条工具描述只回答「这个工具做什么」，而它要修的场景是「模型**根本没想起有这条路**」——
+那发生在读工具之前。所以知识被分成**两段**落在模型做决定之前就读得到的位置（`src/prompt/`）：
+
+| | 静态段 `prompt/section.ts` | 动态快照 `prompt/runtime.ts` |
+|---|---|---|
+| 宿主机制 | `systemPrompt.section()` | `systemPrompt.context()` |
+| 进哪 | 系统提示前缀（order **950**，排在宿主 `TOOL_BASH` 1000 之前） | 每轮 user-role 快照（order 200） |
+| 装什么 | **规则**：远端的事走 `ssh_console_*`；本机 shell 里 ssh 过去也"能用"，但人看不见 | **事实**：target / session / 会话名的来历 / 是否正落在人的 pane 上 |
+| 会不会变 | 逐字节恒定（连 `{{}}` 插值都不参加）→ 不打穿前缀缓存 | 每轮重算，本来就每轮新 |
+| 缺了它 | 模型把 `wsl ssh` 当默认路径 | 模型不知道此刻会在哪台机、哪个会话上干活 |
+
+两段的分界不是风格问题，是**缓存与正确性的分界线**：会话名一改就打穿整段前缀。
+所以静态段里**不许出现任何变量**（`test/unit/runtime-view.test.mjs` 守着这条）。
+
+`visible-ssh runtime` 里那句 `(built-in default — nobody chose it)` 是这套东西的要点：出厂默认
+会话名恰好是人的 pane，两句话（"默认是 default" ＋ "别在 default 上动手"）会合成一个**封闭结论**
+——"这套工具做不了破坏性操作"——于是模型绕去本机 `ssh`，正好钻进那条禁令想避免的不可见通道。
+把"这个默认值没人选过"写出来之后，才有第三个选项：`ssh_console_up(session: "agent-<topic>")`。
+
+同一份 `RuntimeView` 也进了 `GET /visible-ssh/sessions` 的负载（字段 `runtime`），面板与模型看到的是
+**同一份事实**——两处各算各的，人才会以为插件没生效。
+
 ### 右侧栏「visible-ssh」面板
 
 **要先进一个会话**才会看到它——右侧栏是会话内的 UI，欢迎页没有右侧栏（这是 DSH 的结构，不是插件问题）。它做三件事：
@@ -497,13 +525,13 @@ npm install                    # 仓根：工作区依赖（typescript、cordis�
 npm run build                  # plugin/src -> plugin/lib（宿主加载的是产物；门禁也会自动补）
 npm run ci                     # 本机一条命令：build → typecheck → lint → node test/run.mjs
 npm run lint                   # 仓根 ESLint（eslint.config.mjs；产物、test/env、scratch 已忽略）
-node test/run.mjs              # 门禁两段：test/unit/** 127 项（vitest）＋ 密闭 7 套件 / 401 项
+node test/run.mjs              # 门禁两段：test/unit/** 148 项（vitest）＋ 密闭 7 套件 / 401 项
 cd plugin; npm test            # 同上（scripts.test 已接线）
 ```
 
 | 套件 | 项数 | 跑什么 |
 |---|---|---|
-| `test/unit/**`（vitest，9 个 spec） | 127 | **unit 层**：信封锁与失败（`parseEngineOutput`）、CLI 定位（`enginePackageName` ／ `resolveEngine` ／ `engineCommand`，含 `--config` 注入的位置）、**配置解析**（`userConfigPath` 的三处落点 ／ `chooseHostConfig` 的四档顺序与"存在才用" ／ `resolveConfig` 的接线 ／ `parseHostConfigSession` 的三档与 `sshConfigPath` 的落点，全用假 roots，不读本机任何目录）、**只读 ssh 配置**（`parseSshConfig` 的段与通配规则、`Key=value`、段内第一个胜出、端口校验 ／ `loadSshHosts` 喂假读取器的"文件不在就是空清单／真读不动才是 error"）、锁校验（`verifyPayload` 的各种坏法）、内存替身自身、sessions 路由（假 req/res ＋ 假连接，含 `session` 这个只写存储、不碰引擎的动作）、9 个工具的注册与执行（真 `defineTool`）、**暂存目录清理**（`sweepSpoolDir` 只收超龄的 `.out`/`.err`/`.cmd`，非暂存文件不动，删不掉不抛、只跳过，目录不存在回空表）。不 spawn 进程、不联网、不碰 SSH、不起宿主，约 0.6 s |
+| `test/unit/**`（vitest，11 个 spec） | 148 | **unit 层**：信封锁与失败（`parseEngineOutput`）、CLI 定位（`enginePackageName` ／ `resolveEngine` ／ `engineCommand`，含 `--config` 注入的位置）、**配置解析**（`userConfigPath` 的三处落点 ／ `chooseHostConfig` 的四档顺序与"存在才用" ／ `resolveConfig` 的接线 ／ `parseHostConfigSession` 的三档与 `sshConfigPath` 的落点，全用假 roots，不读本机任何目录）、**只读 ssh 配置**（`parseSshConfig` 的段与通配规则、`Key=value`、段内第一个胜出、端口校验 ／ `loadSshHosts` 喂假读取器的"文件不在就是空清单／真读不动才是 error"）、锁校验（`verifyPayload` 的各种坏法）、内存替身自身、sessions 路由（假 req/res ＋ 假连接，含 `session` 这个只写存储、不碰引擎的动作）、9 个工具的注册与执行（真 `defineTool`）、**暂存目录清理**（`sweepSpoolDir` 只收超龄的 `.out`/`.err`/`.cmd`，非暂存文件不动，删不掉不抛、只跳过，目录不存在回空表）、**运行时视图与提示面**（`resolveSession` 的五档来历 ／ `runtimeView` 打包 ／ `renderRuntime` 渲染 ／ `REMOTE_HOST_RULES` **逐字节恒定**且不含任何会变的值 ／ `PANE_LAW` 的禁令与出口成对出现）。不 spawn 进程、不联网、不碰 SSH、不起宿主，约 0.6 s |
 | `manifest-check.mjs` | 11 | 客户端 bundle 只依赖冻结基座；**三条**路由路径在两半里一致 |
 | `engine-check.mjs` | 25 | **引擎缝**：只允许跑编译产物（两条"Python 待命"断言**待拆**）；产物落在平台包里（默认 `exeEntry` 为空 ＋ 两条显式覆盖的逃生口）；`--timeout` 何时前移；**`--config` 选中的那份 `host.toml` 排在所有 flag 与 verb 之前、调用方自带就不重复插、一个候选都没有就不插、Python 分支不插**；以及"不翻译就会静默跑错命令"那条坑的断言 |
 | `artifact-check.mjs` | 23 | **产物身份锁**：平台包按包名解析出来的程序就是包里那个 `visible-ssh.exe`；包清单（`name`/`os`/`cpu`/`files`）与三个 exe 对得上；字节数与 `sha256` 与**包里**的 `engine.lock` 逐一相符，且目录里没有锁没登记的 exe（三个 exe 与锁都不进 git，身份只能记在锁里）。**不执行 exe**，受限宿主里也能跑 |
@@ -511,7 +539,7 @@ cd plugin; npm test            # 同上（scripts.test 已接线）
 | `settings-check.mjs` | 36 | 清单住 `ctx.settings` 的存储缝（含退回插件自己文件的那条路） |
 | `route-check.mjs` | 76 | 镜像路由（TTL / 单飞 / 失败不缓存）+ **面板路由**（GET 纯本地、open/kill 转发给引擎的确切 argv、activate 换当前连接、**session 换当前那台的会话**：200 回整张 targets 且不碰引擎，坏名字 400 `bad-session`，未知 action 的文案把五个动作都列出来） |
 | `client-half-check.mjs` | 155 | 用假 React / 假 fetch / 假 document **真渲染**客户端半：镜像、暂停、滚动跟随、**两个下拉**（「服务器」= 连接清单的「当前」；「会话」= 这块屏幕照谁：默认选中第一项「跟随当前连接 · default」、`<option>` 里列出枚举到的每个会话；选某一项后那次 `GET /visible-ssh/screen?session=…` 带上该会话、`<pre>` 换成它的屏、下拉与"被照的那一行"都跟着动；选回第一项则 URL 上不再带参数、换服务器则丢掉钉住的名字）、**跟着谁说得明白**（被照的那一行**整行高亮**且小字行尾写「 · 正在镜像」，全表只有一行这么读；面板另有一行「正在镜像：会话 X · 跟随当前连接／已钉住」；宿主 payload 的 `active` 为 `null` 时改跟**屏幕自己回报的**会话名、那行改读「跟随宿主默认」，恢复成有当前连接时又读回「跟随当前连接」）、**取屏失败不留空白**（把失败原因与"下一次自动重试"写进屏幕框，状态行同时读「读取出错」；下一次轮询拿到好回答就恢复）、**客户端侧 20s 兜底超时**（把钟拨快后下一次 tick 自己判超时并重发，旧回答晚到时不许改状态）、两个动作、未配置空状态，以及设置页那张 ssh 候选表（有别名时每行渲染 ＋「填入」把别名写进「主机」、没有别名/没有家目录/读不动三种说法、旧宿主不给 `sshConfig` 时整块不画、表头那个「刷新」按一下只重读一次 `GET /visible-ssh/connection` 并让新加的 Host 段立刻出现），还有**对话框里那两格**（`conversation.input.left` 槽位：「服务器」一台连接都没有时整格渲染 `null` 不占地方、自己那条 5s 轮询、下拉的 `value` 是「当前连接」而不是第一行、选择后置灰并发**恰好一次** `POST /visible-ssh/sessions {action:'activate'}`（**不是** `/connection`：那条路由回的形状里没有 `target`，写错过一次）、应答回来后选中项跟着改、换机器顺手重读一次会话清单、再选已经是当前的那台就不发请求、别处切换后下一次轮询自己跟上、以及读失败时把原因写进 `title`；「会话」下拉列出枚举到的名字并把当前那个钉在清单最前、选中发一次 `{action:'session'}`、旁边 `↻` 按一下只重读一次枚举） |
-| **合计** | **528** | ＝ unit 127 ＋ 密闭 401。全部离线：不需要 DSH、不需要网络、不需要 SSH、**不需要构建 exe**（`engine-check` 只验纯函数；`artifact-check` 只读文件与 sha256）；但要存在 `plugin/lib/` —— `run.mjs` 会先比一下产物与源码的新旧，旧了自己构建 |
+| **合计** | **549** | ＝ unit 148 ＋ 密闭 401。全部离线：不需要 DSH、不需要网络、不需要 SSH、**不需要构建 exe**（`engine-check` 只验纯函数；`artifact-check` 只读文件与 sha256）；但要存在 `plugin/lib/` —— `run.mjs` 会先比一下产物与源码的新旧，旧了自己构建 |
 
 **门禁自己防止漏跑**：`run.mjs` 里有一份"套件台账"（密闭 + opt-in），比对的是**顶层** `test/*.mjs`。往 `test/` 里加一个既不在密闭列表、也不在 opt-in 列表的 `.mjs`，门禁会**按名字报错并 exit 1**——这类失误本来是静默的（加了套件、门禁照样绿、却没人跑它）。加套件就改这一处。unit 层不在这份台账里：它是 `test/unit/*.test.mjs`，由 vitest 自行发现，`run.mjs` 把它接在密闭套件之前作为第二段。
 

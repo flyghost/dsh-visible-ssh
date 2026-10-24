@@ -8,7 +8,7 @@
 ```
 test/
   run.mjs                 唯一入口：先确认构建产物不比源码旧（必要时自己构建），再跑两层：unit 段 → 7 个密闭套件
-  unit/                   ★ 127 项  vitest（9 个 spec）：纯函数、内存引擎端口、假 req/res；不 spawn、不联网、约 0.6 s
+  unit/                   ★ 148 项  vitest（11 个 spec）：纯函数、内存引擎端口、假 req/res；不 spawn、不联网、约 0.6 s
     envelope.test.mjs        信封与失败：parseEngineOutput / failureOf / BridgeError
     locate.test.mjs          "该跑哪个 CLI"：enginePackageName / resolveEngine / engineCommand 的 flag 重排（含 `--config` 注入）、三条 spawn 失败文案
     verify.test.mjs          "产物有没有被换过"：engine.lock 的缺失/坏 JSON/缺文件/字节与 sha256 不符/未登记的多余 exe
@@ -18,6 +18,8 @@ test/
     sessions-route.test.mjs  sessions 路由：假 req/res ＋ 内存端口（list / open / kill / activate / session）
     tools.test.mjs           9 个工具注册与执行（真 defineTool ＋ 内存端口）
     spool.test.mjs           暂存目录清理：sweepSpoolDir 只收超龄的 .out/.err/.cmd、非暂存文件不动、删不掉只跳过不抛（真 fs，落 test/env/tmp）
+    law.test.mjs             PANE_LAW：禁令与出口（建私有会话）必须在同一句里，四条提到 "default" 的描述都引用同一份文本
+    runtime-view.test.mjs    「此刻是谁」＋ 提示面：resolveSession 的五档来历、runtimeView 打包、renderRuntime 渲染，以及 REMOTE_HOST_RULES 逐字节恒定／不含任何会变的值（缓存红线）
   manifest-check.mjs      11 项  package.json / cordis.patch.yml / 导出面是否与产物一致
   engine-check.mjs        25 项  src/engine/config.ts 解析出的位置与 argv（含 `--config` 必须排在 verb 之前；纯函数级，不执行 exe）
   artifact-check.mjs      23 项  产物身份锁：按包名解析出的平台包里那三个 exe 与 engine.lock 的字节数/sha256，以及包清单
@@ -45,7 +47,7 @@ test/
 ```bash
 npm install                             # 仓根：装工作区依赖（plugin/、test/、packages/engine-win32-x64 一起）
 
-node test/run.mjs                       # 两段：test/unit/** 127 项（vitest）＋ 7 个密闭套件（401 项）
+node test/run.mjs                       # 两段：test/unit/** 148 项（vitest）＋ 7 个密闭套件（401 项）
 cd plugin && npm test                   # 同一件事；plugin/package.json 里指向 ../test/run.mjs
 
 npm run build                           # 只构建插件：plugin/src -> plugin/lib

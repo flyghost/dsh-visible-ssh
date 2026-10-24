@@ -19,6 +19,8 @@ import type {
 } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import { requireApproval } from '../approval/index.js'
+import { PANE_LAW } from './law.js'
+import { rememberRuntime, runtimeView } from '../state/view.js'
 import type { EnginePort } from '../engine/port.js'
 import type { Connections } from '../connection/connections.js'
 import type { ResolvedConfig } from '../engine/config.js'
@@ -79,9 +81,23 @@ const BRIDGE_SLACK_MS = 60_000
 /** 模型请求的命令超时上限（一小时）。 */
 const MAX_COMMAND_TIMEOUT_MS = 3_600_000
 
+/**
+ * `session` 参数：**不许写出任何具体会话名**。
+ *
+ * 这里曾经是 `Defaults to the plugin's configured session ("default").` —— 一个
+ * 字面量。它是文本，不是插值：人去下拉里选了 `agent-ops` 之后，这句话照旧说
+ * `"default"`，而模型以文案为准。它还会跟 `"default"` 那条禁令复合出一个封闭
+ * 结论——「默认在 default」＋「default 不许动手」⇒ 这套工具做不了破坏性操作
+ * ⇒ 另找一条路（本机 `ssh`）。一个过期的默认值就能让人绕开整个工具面。
+ *
+ * 现在的写法不给值，只给**去哪读**：每轮的运行时快照（`prompt/runtime.ts`）
+ * 报当前会话，`ssh_console_status` 报实际用到的那个。
+ */
 const SESSION_PARAM = {
   type: 'string',
-  description: 'tmux session name to act on. Defaults to the plugin\'s configured session ("default").',
+  description:
+    'tmux session name to act on. Omit it to use the session shown under "visible-ssh runtime" '
+    + 'in the current context; ssh_console_status reports the one actually in use.',
 } satisfies ParameterPropertySpec
 
 const HISTORY_PROPERTIES = {
@@ -200,10 +216,20 @@ export function registerTools(
       id: active?.id ?? null,
     }
   }
+  /**
+   * 这次要用哪个会话名。
+   *
+   * 解析顺序（点名 > 人选的档案 > 配置）**只定义一次**，在 `state/view.ts` 的
+   * `resolveSession()` 里。这里曾经是一条就地写的三元表达式，配上参数说明里那句
+   * 过期的 `("default")`，正好把「人已经在下拉里选好了」抹成「默认是 default」。
+   *
+   * 顺手把这轮的真实事实喂进那份缓存：下一轮的运行时快照（`prompt/runtime.ts`）
+   * 与右侧栏面板读的是同一份，三处不再各说各话。
+   */
   const sessionOf = async (args: SessionArgs): Promise<string> => {
-    if (args.session !== undefined && args.session !== '') return args.session
-    const active = await activeConnection()
-    return active?.session ?? cfg.defaultSession
+    const view = await runtimeView(cfg, connections, args.session)
+    rememberRuntime(view)
+    return view.session
   }
 
   register(defineTool({
@@ -218,8 +244,8 @@ export function registerTools(
       + 'It is also the cheap way to re-check after a surprising result, for instance whether the pane '
       + 'predates the configured scrollback (history.stale=true means old output is being discarded and '
       + 'the session needs ssh_console_reset). '
-      + 'Each tmux session is a separate conversation surface: the one named "default" belongs to the '
-      + 'human watching it, so do not run destructive work there — use a private session name.',
+      + 'Each tmux session is a separate conversation surface. '
+      + PANE_LAW,
     parameters: {
       session: SESSION_PARAM,
     },
@@ -485,7 +511,7 @@ export function registerTools(
       + 'exit code arrived in time: the command outlived its timeout, or it destroyed the shell (e.g. '
       + '`exit`); the output collected so far is still returned, and a human watching the pane can say '
       + 'what happened. Raise `timeoutMs` for long builds instead of re-running. '
-      + 'Do not run anything destructive in the session named "default" — that is the human\'s pane.',
+      + PANE_LAW,
     parameters: {
       command: {
         type: 'string',
@@ -589,7 +615,9 @@ export function registerTools(
       + 'DESTRUCTIVE: every attached human window is disconnected and all scrollback is lost; anything '
       + 'still running in the pane dies with it. '
       + 'Use it to clean up a private session you created, and never on the session named "default" '
-      + 'unless the user asked for it. It requires interactive approval and will fail closed when no '
+      + 'unless the user asked for it. Your own work belongs in a private session — ssh_console_up '
+      + 'creates one with session: "agent-<topic>" — so kill that, not the human\'s pane. '
+      + 'It requires interactive approval and will fail closed when no '
       + 'approval answerer is composed; if that happens, hand the decision to the user instead of retrying. '
       + 'Killing a session that does not exist is not an error (killed=false).',
     parameters: {
