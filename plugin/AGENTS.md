@@ -201,8 +201,9 @@ npm install                                  # 仓根：工作区依赖（typesc
 npm run build                                # plugin/src -> plugin/lib（改完源码后；门禁也会自动补）
 npm run ci                                   # 仓根一条命令：build → typecheck → lint → node test/run.mjs
 npm run lint                                 # 仓根 ESLint（eslint.config.mjs；产物、test/env、scratch 已忽略）
-node test/run.mjs                            # 门禁两段：unit 127 项（vitest）＋ 全部密闭套件（401 项）
+node test/run.mjs                            # 门禁两段：unit 148 项（vitest）＋ 全部密闭套件（401 项）
 node node_modules/vitest/vitest.mjs run --root test   # 只跑 unit 段（约 0.6 s，改纯函数时用这个）
+node node_modules/vitest/vitest.mjs run --root test --pool=threads   # 同上；受限宿主里默认 forks 池 spawn EPERM，换线程池才跑得完
 node test/own-host-check.mjs                 # 需要：自带 web 宿主 + 一个挂了本插件的 home
                                              #   （默认 test/env/home，由
                                              #    test/tools/setup-env.mjs 从 env/home.seed 重建；

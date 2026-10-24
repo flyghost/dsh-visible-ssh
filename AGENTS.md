@@ -67,6 +67,7 @@ npm run typecheck                              # 只跑 tsc --noEmit（plugin/ �
 npm run lint                                   # 只跑 ESLint（仓根 eslint.config.mjs；产物、test\env、scratch 已忽略）
 node test\run.mjs                              # 插件：unit 148 项（vitest）＋ 7 个密闭套件（401 项）；离线，不需 DSH/网络/SSH
 node node_modules\vitest\vitest.mjs run --root test   # 只跑 unit 段（约 0.6 s，改纯函数时用这个）
+node node_modules\vitest\vitest.mjs run --root test --pool=threads   # 同上，但在受限宿主（默认 forks 池 spawn EPERM）里跑
 node test\live-route.mjs                       # 真 cordis ＋ 真 webServer ＋ 真 SSH ＋ 真引擎（DSH 运行时默认取仓内 test/env/host，可用 DSH_APP 换）；**凭据要显式给**：SSH_HOST=… SSH_USER=… [SSH_PORT=…] [SSH_PASSWORD=…]，或 VISIBLE_SSH_USE_REPO_CONFIG=1 明说就用仓里那份
 node test\own-host-check.mjs                   # 自起一台 web 宿主：token 栅栏 ＋ 三条路由 ＋ list 真过 SSH（8 项；浏览器那一半要人先起浏览器）。凭据同上，没给就打印 {skipped: …} 并 exit 0
 packages\engine-win32-x64\visible-ssh.exe doctor   # 只连不看屏，打印目标机事实
@@ -125,7 +126,7 @@ node test\tools\setup-env.mjs --check  # 只问「环境还齐吗」，不写任
 | Node 起 `.cmd` | 子进程里 `spawnSync('npm.cmd', …)` 在 Node 24 直接失败（`status:null`）——`.cmd`/`.bat` 必须经 `cmd /c` 起（`plugin/scripts/engine-pack.mjs` 就是这么打 tarball 的） |
 | DSH 沙箱退化 | 见到第一条 `UNKNOWN: unknown error, open '…tmpdir…'` 就**停止写入并重启宿主**，别换通道连续重试 |
 | 浏览器 | 桌面版 GUI 只认 Electron 渲染进程（`dsh-desktop.mode` 不是 `compatibility` 时普通浏览器拿 403）；沙箱里跑不起任何 Chromium（Mojo 要命名管道）→ 浏览器由**人**起，agent 经 TCP 附着（`test/tools/start-agent-browser.cmd` ＋ `driver.mjs`） |
-| 受限宿主 | **不能用管道收子进程输出**（`stdio:'pipe'` 会 EPERM）；`inherit` 正常，要留日志就用 `openSync` 的文件描述符。**另外 vitest 的 forks 池要 fork worker（走 IPC）**，在这种沙箱里 `npm run ci` 的单元段会 `Failed to start forks worker … Caused by: Error: spawn EPERM` —— build / typecheck / lint 与 7 个密闭套件都不受影响，单元层请在普通终端跑（或让工具放开 spawn），别当回归 |
+| 受限宿主 | **不能用管道收子进程输出**（`stdio:'pipe'` 会 EPERM）；`inherit` 正常，要留日志就用 `openSync` 的文件描述符。**另外 vitest 的 forks 池要 fork worker（走 IPC）**，在这种沙箱里 `npm run ci` 的单元段会 `Failed to start forks worker … Caused by: Error: spawn EPERM` —— build / typecheck / lint 与 7 个密闭套件都不受影响，别当回归。**绕行：改线程池** —— `node node_modules\vitest\vitest.mjs run --root test --pool=threads` 不起子进程，2026-10-24 本机实测在同一受限宿主里跑完 11 文件 148 项；`npm run ci` 里那一段仍会用默认 forks 池，所以 `FAILED: unit specs` 只能说明「这一段没跑成」，不是测试红 |
 | 插件改动生效 | 宿主加载的是产物：改 `src/client/*` 后要 `npm run build`，`plugin/lib/client/index.js` 桌面宿主约 **1 秒热更**、普通 `dsh web` 宿主需**刷新页面**；改其余源码后 `npm run build` ＋**重启宿主**（`package.json`/`plugin/lib` 里的宿主侧文件都是每进程只加载一次） |
 | 引擎的运行残渣 | 引擎每跑一次都会在 exe **旁边**留一对 0 字节的 `visible-ssh-c-<pid>.{out,err}`（pid 每次都新，所以宿主一开着面板就会不断冒）：`.gitignore` 已挡住，**别把它们提交** |
 
